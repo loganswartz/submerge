@@ -1,5 +1,25 @@
 #!/bin/bash
 
+# ----------------------------------
+# Submerge.sh
+# 
+# A tool for batch-merging discrete subtitle files into their accompanying MKV video files
+# 
+# Written by: Logan Swartzendruber
+# Last Modified: 2019/1/14
+# ----------------------------------
+
+
+function regex_search {
+	directory="$1"
+	# regex="$(printf '%s' "$2" | sed 's/[.[\*^C()+?{|]/\\&/g')"
+	regex="$2"
+	result=$(find "$directory" -maxdepth 1 -regextype posix-extended -regex "$regex") 
+	echo $regex
+	echo $result
+}
+
+
 mkvdir="$1"
 subdir="$2"
 
