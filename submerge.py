@@ -9,8 +9,8 @@ aboutThisProgram = """
 # (Python refactor of submerge.sh)
 # 
 # Written by: Logan Swartzendruber
-# Version: 0.1
-# Last Modified: 2019/1/29
+# Version: 0.2
+# Last Modified: 2019/02/02
 # ------------------------------------------------------------------------------------------------
 # ----------------------------------
 """
@@ -74,7 +74,7 @@ class fileAuditor(object):
         return files
 
     # Pass this an array of file extensions (ie [".txt", ".mkv", etc...]), and it finds all files in a dir with those extensions and packs them into a dictionary
-    def FindFiletype(self, desiredExts: list, directory: pathlib.Path = pathlib.Path.cwd(), verbose: bool = False):
+    def findFiletype(self, desiredExts: list, directory: pathlib.Path = pathlib.Path.cwd(), verbose: bool = False):
         files = {}
         
         for file in self.scanDirectory():
@@ -109,7 +109,7 @@ class fileAuditor(object):
 
     def findSisterFile(self, file: pathlib.Path, fileExt: str):
         se = self.regexExtraction(file, "seasonEpisode")
-        fileList = self.FindFiletype([fileExt], file.parent)
+        fileList = self.findFiletype([fileExt], file.parent)
 
         for item in fileList:
             regexFoundFile = self.regexExtraction(item, "seasonEpisode")
@@ -166,7 +166,7 @@ def main():
         submerge(videoDir = viddir, subDir = subdir)
 
     fileOperator.scanDirectory(verbose=True)
-    fileOperator.FindFiletype([".py", ".md", ".swp"], verbose=True)
+    fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
     exit(0)
     
 
@@ -183,14 +183,14 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir: pathlib.Path =
     fileOperation = fileAuditor("submerge")
     
     videoFiles = fileOperation.scanDirectory(globPattern = "*.mkv", searchDir = videoDir, verbose=True)
-    subFiles = fileOperation.scanDirectory(globPattern = "*.srt", searchDir = subDir, verbose=True)
+    subFiles = fileOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], searchDir = subDir, verbose=True)
     subFiles = fileOperation.scanDirectory(verbose=True)
 
     # merge subfile into mkv and set language to English
-    # subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile)])
+    subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile)])
 
     # merge subfile into mkv and set language to English (.idx and .sub pairs)
-    # subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile), str(subfile2])
+    subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile), str(subfile2])
 
 
 
