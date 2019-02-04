@@ -9,9 +9,15 @@ aboutThisProgram = """
 # (Python refactor of submerge.sh)
 # 
 # Written by: Logan Swartzendruber
-# Version: 0.2
+# Version: 0.5
 # Last Modified: 2019/02/02
 # ------------------------------------------------------------------------------------------------
+# ----------------------------------
+"""
+aboutThisProgramShort = """
+# ----------------------------------
+# Submerge.py
+# Version: 0.5
 # ----------------------------------
 """
 
@@ -19,6 +25,9 @@ import argparse
 import pathlib
 import subprocess
 import shutil
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+import re
 
 
 # Wrapper for making paths from strings
@@ -34,8 +43,11 @@ class messenger(object):
     def __init__(self, name: str):
         self.role = name
 
-    def programInit(self):
-        print(aboutThisProgram)
+    def programInitMesg(self, verbose: bool = False):
+        if verbose:
+            print(aboutThisProgram)
+        else:
+            print(aboutThisProgramShort)
 
     def say(self, message: str):
         print(self.role + ": " + message)
@@ -49,9 +61,9 @@ class fileAuditor(object):
         self.messenger = messenger(self.role)
 
     # Returns a plain list of objects in the dir matching a glob (defaults: CWD, *)
-    def scanDirectory(self, globType: str = "glob" , globPattern: str = "*", searchDir: pathlib.Path = pathlib.Path.cwd(), verbose: bool = False):
+    def scanDirectory(self, globPattern: str = "*", searchDir: pathlib.Path = pathlib.Path.cwd(), recursive: bool = False, verbose: bool = False):
     
-        if globType == "glob":
+        if not recursive:
             #########################
             files = [file for file in searchDir.glob(globPattern) if file.is_file()]
             # This is equivalent to:
@@ -74,10 +86,10 @@ class fileAuditor(object):
         return files
 
     # Pass this an array of file extensions (ie [".txt", ".mkv", etc...]), and it finds all files in a dir with those extensions and packs them into a dictionary
-    def findFiletype(self, desiredExts: list, directory: pathlib.Path = pathlib.Path.cwd(), verbose: bool = False):
+    def findFiletype(self, desiredExts: list, directory: pathlib.Path = pathlib.Path.cwd(), recursive: bool = False, verbose: bool = False):
         files = {}
         
-        for file in self.scanDirectory():
+        for file in self.scanDirectory(searchDir=directory, recursive=recursive):
             if file.suffix in desiredExts:
                 try:
                     files[file.suffix].append(file)
@@ -105,18 +117,55 @@ class fileAuditor(object):
         result = re.search(regex, file.name)
         if result:
             print("Extracted: " + result.group(regexResultGroup))
-        return result.group(regexResultGroup)
+            return result.group(regexResultGroup)
+        else:
+            return ""
 
-    def findSisterFile(self, file: pathlib.Path, fileExt: str):
+    def findSisterFile(self, file: pathlib.Path, validFileExts: list):
+        # 1. find exact name match
+        # 2. find SE match
+        # 3. find fuzzy name match
+
+        # get list of all files w/ valid filetype in the same directory (and child directories) as the input file
+        fileList = self.findFiletype(validFileExts, file.parent, recursive=True)
+        self.messenger.say("Searching for sister file to " + str(file) + "...")
+        # ------------------ 1 ------------------ #
+        for filetype, array in fileList.items():
+            if file.with_suffix(filetype) in array:
+                print("    Found ---> " + str(file.with_suffix(filetype)))
+                return file.with_suffix(filetype)
+        
+        self.messenger.say("Perfect match not found, resorting to SE search...")
+
+        # ------------------ 2 ------------------ #
+        # extracts the season/episode from the filename
         se = self.regexExtraction(file, "seasonEpisode")
-        fileList = self.findFiletype([fileExt], file.parent)
+        if se == "":
+            print("SE not found, skipping SE search.")
+        else:
+            for filetype, array in fileList.items():
+                for item in array:
+                    if self.regexExtraction(item, "seasonEpisode") == se:
+                        print("    Found ---> " + str(file.with_suffix(filetype)))
+                        return item
+        self.messenger.say("SE match not found, resorting to best fuzzy match...")
 
-        for item in fileList:
-            regexFoundFile = self.regexExtraction(item, "seasonEpisode")
-            if regexFoundFile:
-                return item
+        # ------------------ 3 ------------------ #
+        bestMatch = [None, 0]
+        for filetype, array in fileList.items():
+            # hacky list comprehension to convert array of pathlib.Path objects to strings for compatability with fuzzywuzzy
+            strArray = [str(file) for file in array]
+
+            chosenFuzzyFile = process.extractOne(str(file.with_suffix(filetype)), strArray, scorer=fuzz.partial_ratio)
+            if chosenFuzzyFile[1] > bestMatch[1]:
+                bestMatch = chosenFuzzyFile
+
+        if bestMatch[1] > 75:
+            print("    Found (STR: " + str(bestMatch[1]) + ") ---> " + str(bestMatch[0])) 
+            return definePath(bestMatch[0])
 
         print("No sister file found.")
+        # No sister file found with the exact same name, or with the same SE as the file, or one with over 75% fuzzy name match confidence
         return None
 
     def recordFileError(self, errorFile: pathlib.Path, errorStatus: str, errorExtra: str = None, errorExtraMeta: str = None):
@@ -147,7 +196,8 @@ def main():
     viddir = definePath(args.viddir)
     subdir = definePath(args.subdir)
     fileOperator = fileAuditor("main")
-    
+    testMode = False
+
     validModes = ["submerge",
             "subtag",
             "organize",
@@ -157,16 +207,19 @@ def main():
     if programMode not in validModes:
         raise ValueError("Mode %r not found." % programMode)
     
-    mainMessenger = messenger("mainThread")
-    mainMessenger.programInit()
-    mainMessenger.say("Program starting...")
+    mainMessenger = messenger("main")
+    mainMessenger.programInitMesg()
+    mainMessenger.say("Program starting...\n")
 
     
     if programMode == "submerge":
         submerge(videoDir = viddir, subDir = subdir)
 
-    fileOperator.scanDirectory(verbose=True)
-    fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
+    if testMode == True:
+        fileOperator.scanDirectory(verbose=True)
+        fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
+
+    fileOperator.findSisterFile(file=definePath("/home/logans/Submerge/submerge.py"), validFileExts=[".sh"])
     exit(0)
     
 
@@ -181,16 +234,21 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir: pathlib.Path =
     print("Looking for files...")
 
     fileOperation = fileAuditor("submerge")
-    
+    outDirectory = videoDir / "submerged"
+    outDirectory.mkdir(exist_ok=True)
+
     videoFiles = fileOperation.scanDirectory(globPattern = "*.mkv", searchDir = videoDir, verbose=True)
-    subFiles = fileOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], searchDir = subDir, verbose=True)
-    subFiles = fileOperation.scanDirectory(verbose=True)
-
-    # merge subfile into mkv and set language to English
-    subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile)])
-
-    # merge subfile into mkv and set language to English (.idx and .sub pairs)
-    subprocess.run(["mkvmerge", "-o", str(outfile), str(srcfile), "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", str(subfile), str(subfile2])
+    # subFiles = fileOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], searchDir = subDir, verbose=True)
+    
+    for srcfile in videoFiles:
+        subfile = fileOperation.findSisterFile(srcfile, [".srt",".ass",".ssa",".usf",".pgs",".idx"])
+        outfile = outDirectory / srcfile.name
+        if subfile.suffix == ".idx":
+            # merge subfile into mkv and set language to English (.idx and .sub pairs)
+            subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile, subfile.with_suffix(".sub")])
+        else:
+            # merge subfile into mkv and set language to English
+            subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile])
 
 
 
