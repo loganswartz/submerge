@@ -1,6 +1,8 @@
 import pathlib
 import subprocess
 import shutil
+import errno
+import os
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import re
@@ -15,22 +17,22 @@ class fileOperation(object):
         self.messenger = messenger(self.role)
 
     # Returns a plain list of objects in the dir matching a glob (defaults: CWD, *)
-    def scanDirectory(self, globPattern: str = "*", searchDir: pathlib.Path = pathlib.Path.cwd(), recursive: bool = False, verbose: bool = False):
+    def scanDirectory(self, globPattern: str = "*", directory: pathlib.Path = pathlib.Path.cwd(), recursive: bool = False, verbose: bool = False):
     
         if not recursive:
             #########################
-            files = [file for file in searchDir.glob(globPattern) if file.is_file()]
+            files = [file for file in directory.glob(globPattern) if file.is_file()]
             # This is equivalent to:
             #
             # files = []
-            # for file in searchDir.glob(globPattern):
+            # for file in directory.glob(globPattern):
             #     if file.is_file():
             #         files.append(file)
             #
             # (list comprehensions are confusing, man) 
             #########################
         else:
-            files = [file for file in searchDir.rglob(globPattern) if file.is_file()]
+            files = [file for file in directory.rglob(globPattern) if file.is_file()]
         # recursive vs nonrecursive globbing, default is nonrecursive
 
         if verbose == True:
@@ -43,7 +45,7 @@ class fileOperation(object):
     def findFiletype(self, desiredExts: list, directory: pathlib.Path = pathlib.Path.cwd(), recursive: bool = False, verbose: bool = False):
         files = {}
         
-        for file in self.scanDirectory(searchDir=directory, recursive=recursive):
+        for file in self.scanDirectory(directory=directory, recursive=recursive):
             if file.suffix in desiredExts:
                 try:
                     files[file.suffix].append(file)
@@ -70,13 +72,13 @@ class fileOperation(object):
 
         result = re.search(regex, file.name)
         if result:
-            print("Extracted: " + result.group(regexResultGroup))
+            self.messenger.say("Extracted: " + result.group(regexResultGroup), indent=1)
             return result.group(regexResultGroup)
         else:
             return ""
 
     # nearly identical to findSisterFile, but you also pass it the output of findFiletype() instead of validFileExts, to prevent parsing the directory 1000x times or more for large operations (essentially just a 'Big O' improvement)
-    def findSisterFile(self, file: pathlib.Path, validFileExts: list = None, fileList: list = None):
+    def findSisterFile(self, file: pathlib.Path, validFileExts: list = None, fileList: list = None, indent: int = 0):
         # 1. find exact name match
         # 2. find SE match
         # 3. find fuzzy name match
@@ -87,27 +89,29 @@ class fileOperation(object):
         if fileList == None and validFileExts == None:
             raise SisterFileException("Not enough information given to findSisterFile().")
         
-        self.messenger.say("Searching for sister file to " + str(file) + "...")
+        self.messenger.inform("Searching for sister file to " + str(file) + "...", indent=indent)
         # ------------------ 1 ------------------ #
         for filetype, array in fileList.items():
             if file.with_suffix(filetype) in array:
-                print("    Found ---> " + str(file.with_suffix(filetype)))
+                self.messenger.say("Found ---> " + str(file.with_suffix(filetype)) + "\n", indent=indent+1)
+                self.successCount += 1
                 return file.with_suffix(filetype)
         
-        self.messenger.say("Perfect match not found, resorting to SE search...")
+        self.messenger.say("Perfect match not found, resorting to SE search...", indent=indent+1)
 
         # ------------------ 2 ------------------ #
         # extracts the season/episode from the filename
         se = self.regexExtraction(file, "seasonEpisode")
         if se == "":
-            print("SE not found, skipping SE search.")
+            self.messenger.say("SE not found, skipping SE search.", indent=indent+1)
         else:
             for filetype, array in fileList.items():
                 for item in array:
                     if self.regexExtraction(item, "seasonEpisode") == se:
-                        print("    Found ---> " + str(file.with_suffix(filetype)))
+                        self.messenger.say("Found ---> " + str(file.with_suffix(filetype)) + "\n", indent=indent+1)
+                        self.successCount += 1
                         return item
-        self.messenger.say("SE match not found, resorting to best fuzzy match...")
+        self.messenger.say("SE match not found, resorting to best fuzzy match...", indent=indent+1)
 
         # ------------------ 3 ------------------ #
         bestMatch = [None, 0]
@@ -120,17 +124,19 @@ class fileOperation(object):
                 bestMatch = chosenFuzzyFile
 
         if bestMatch[1] > 75:
-            print("    Found (STR: " + str(bestMatch[1]) + ") ---> " + str(bestMatch[0])) 
-            return definePath(bestMatch[0])
+            self.messenger.say("Found (STR: " + str(bestMatch[1]) + ") ---> " + str(bestMatch[0]) + "\n", indent=indent+1) 
+            self.successCount += 1
+            return pathlib.Path(bestMatch[0]).resolve()
 
-        print("No sister file found.")
+        self.messenger.say("No sister file found.\n", indent=indent+1)
         # No sister file found with the exact same name, or with the same SE as the file, or one with over 75% fuzzy name match confidence
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(file.with_suffix(".subtitle")))
 
 
     def recordFileError(self, errorFile: pathlib.Path, errorStatus: str): 
         self.errorFiles[errorFile.name] = {"file": errorFile, "error": errorStatus}
-        print("Error on file " + errorFile.name + " was recorded.")
+        self.errorCount += 1
+        self.messenger.sayError("Error on file " + errorFile.name + " was recorded.")
 
     def generateReport(self, processedDirectory: pathlib.Path, outputDirectory: pathlib.Path):
         self.messenger.operationReport(self.successCount, self.errorCount, self.errorFiles, processedDirectory, outputDirectory)

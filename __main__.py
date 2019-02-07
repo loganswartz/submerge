@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-version = 0.5
-modificationDate = "2019/02/04"
+version = 0.8
+modificationDate = "2019/02/07"
 aboutThisProgram = f"""
 # ----------------------------------
 # ------------------------------------------------------------------------------------------------
@@ -28,11 +28,14 @@ import argparse
 import pathlib
 import subprocess
 import shutil
+import errno
+import os
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import re
 from classes import messenger
 from classes import operation
+import platform
 
 
 # Wrapper for making paths from strings
@@ -82,6 +85,8 @@ def main():
             mkvmerge = pathlib.PureWindowsPath("C:/Program Files/MKVToolNix/mkvmerge.exe")
         elif platform.system() == "Linux" or platform.system() == "Darwin":
             mkvmerge = pathlib.PurePosixPath("/usr/bin/mkvmerge")
+        # translates Pure path to regular path
+        mkvmerge = pathlib.Path(mkvmerge).resolve()
     else:
         mkvmerge = definePath(shutil.which("mkvmerge"))
     if not mkvmerge.exists():
@@ -119,15 +124,15 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
     outDirectory.mkdir(exist_ok=True)
     procDirectory.mkdir(exist_ok=True)
 
-    videoFiles = submergeOperation.scanDirectory(globPattern = "*.mkv", searchDir = videoDir, verbose=True)
-    subFiles = submergeOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], searchDir = subDir, recursive=True, verbose=True)
+    videoFiles = submergeOperation.scanDirectory(globPattern = "*.mkv", directory = videoDir, verbose=True)
+    subFiles = submergeOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], directory = subDir, recursive=True, verbose=True)
     
     for srcfile in videoFiles:
         try:
-            subfile = submergeOperation.findSisterFileBatch(srcfile, subFiles)
+            subfile = submergeOperation.findSisterFile(srcfile, fileList=subFiles)
         except FileNotFoundError as e:
-            submergeOperation.recordFileError(errorFile=file, errorStatus=e)
-            submergeOperation.messenger.messenger.say("findSisterFile() for " + srcfile + " skipped.")
+            submergeOperation.recordFileError(errorFile=srcfile, errorStatus=e)
+            submergeOperation.messenger.say("findSisterFile() for " + str(srcfile) + " skipped.\n")
             continue
 
         outfile = outDirectory / srcfile.name
@@ -137,6 +142,7 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
         else:
             # merge subfile into mkv and set language to English
             subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile])
+        print()
     
     submergeOperation.generateReport(processedDirectory=procDirectory, outputDirectory=outDirectory)
     # submerge operation done

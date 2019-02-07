@@ -12,8 +12,11 @@ class messenger(object):
         else:
             print(aboutThisProgramShort)
 
-    def say(self, message: str):
-        print(self.role + ": " + message)
+    def say(self, message: str, indent: int = 0):
+        print(str("    "*indent) + message)
+
+    def inform(self, message: str, indent: int = 0):
+        print(str("    "*indent) + self.role + ": " + message)
 
     def saySuccess(self, successMessage: str):
         print("SUCCESS: " + successMessage)
@@ -24,7 +27,7 @@ class messenger(object):
     def operationReport(self, successNum: int, errorNum: int, errors: dict, processedDir: pathlib.Path, outputDir: pathlib.Path):
         errorsString = ""
         for listkey, error in errors.items():
-            errorsString += "   ERROR: " + error.get("file") + " --> \"" + error.get("errorStatus") + "\"\n"
+            errorsString += "   ERROR: " + str(error.get("file")) + " --> \"" + str(error.get("error")) + "\"\n"
         if errorsString == "":
             errorsString = "    <none>"
         print(f"""
