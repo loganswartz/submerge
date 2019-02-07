@@ -1,61 +1,15 @@
-#!/usr/bin/env python
-
-aboutThisProgram = """
-# ----------------------------------
-# ------------------------------------------------------------------------------------------------
-# Submerge.py
-# 
-# A tool for batch-merging discrete subtitle files into their accompanying MKV video files
-# (Python refactor of submerge.sh)
-# 
-# Written by: Logan Swartzendruber
-# Version: 0.5
-# Last Modified: 2019/02/02
-# ------------------------------------------------------------------------------------------------
-# ----------------------------------
-"""
-aboutThisProgramShort = """
-# ----------------------------------
-# Submerge.py
-# Version: 0.5
-# ----------------------------------
-"""
-
-import argparse
 import pathlib
 import subprocess
 import shutil
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import re
+from .messenger import messenger
 
-
-# Wrapper for making paths from strings
-def definePath(path: str):
-    if path == None:
-        return pathlib.Path.cwd()
-    else:
-        return pathlib.Path(path).resolve()
-
-
-class messenger(object):
-
-    def __init__(self, name: str):
-        self.role = name
-
-    def programInitMesg(self, verbose: bool = False):
-        if verbose:
-            print(aboutThisProgram)
-        else:
-            print(aboutThisProgramShort)
-
-    def say(self, message: str):
-        print(self.role + ": " + message)
-
-
-class fileAuditor(object):
-    def __init__(self, operation: str):
-        self.role = operation
+class fileOperation(object):
+    def __init__(self, opname: str):
+        self.role = opname
+        self.successCount = 0
         self.errorCount = 0
         self.errorFiles = {}
         self.messenger = messenger(self.role)
@@ -121,13 +75,18 @@ class fileAuditor(object):
         else:
             return ""
 
-    def findSisterFile(self, file: pathlib.Path, validFileExts: list):
+    # nearly identical to findSisterFile, but you also pass it the output of findFiletype() instead of validFileExts, to prevent parsing the directory 1000x times or more for large operations (essentially just a 'Big O' improvement)
+    def findSisterFile(self, file: pathlib.Path, validFileExts: list = None, fileList: list = None):
         # 1. find exact name match
         # 2. find SE match
         # 3. find fuzzy name match
 
         # get list of all files w/ valid filetype in the same directory (and child directories) as the input file
-        fileList = self.findFiletype(validFileExts, file.parent, recursive=True)
+        if fileList == None:
+            fileList = self.findFiletype(validFileExts, file.parent, recursive=True)
+        if fileList == None and validFileExts == None:
+            raise SisterFileException("Not enough information given to findSisterFile().")
+        
         self.messenger.say("Searching for sister file to " + str(file) + "...")
         # ------------------ 1 ------------------ #
         for filetype, array in fileList.items():
@@ -166,11 +125,15 @@ class fileAuditor(object):
 
         print("No sister file found.")
         # No sister file found with the exact same name, or with the same SE as the file, or one with over 75% fuzzy name match confidence
-        return None
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(file.with_suffix(".subtitle")))
 
-    def recordFileError(self, errorFile: pathlib.Path, errorStatus: str, errorExtra: str = None, errorExtraMeta: str = None):
-        self.errorFiles[errorFile.name] = {"file": errorFile, "error": errorStatus, "errorExtra": errorExtra, "errorExtraMeta": errorExtraMeta}
+
+    def recordFileError(self, errorFile: pathlib.Path, errorStatus: str): 
+        self.errorFiles[errorFile.name] = {"file": errorFile, "error": errorStatus}
         print("Error on file " + errorFile.name + " was recorded.")
+
+    def generateReport(self, processedDirectory: pathlib.Path, outputDirectory: pathlib.Path):
+        self.messenger.operationReport(self.successCount, self.errorCount, self.errorFiles, processedDirectory, outputDirectory)
 
 ################################### copy or move?
     def moveFile(source: pathlib.Path, destination: pathlib.Path):
@@ -181,77 +144,4 @@ class fileAuditor(object):
             print(error)
         except Exception as error:
             print("An unknown error occurred: " + error)
-
-# __main__
-# ------------------------------------------------------------------------------------------------
-def main():
-    cmdargparser = argparse.ArgumentParser()
-    cmdargparser.add_argument("-m", "--mode", help="set the file manipulation mode", type=str, default="interactive")
-    cmdargparser.add_argument("-v", "--viddir", help="specify the directory containing mkvs to operate on", type=str)
-    cmdargparser.add_argument("-s", "--subdir", help="specify the directory containing subs to operate on", type=str)
-    args = cmdargparser.parse_args()
-
-    # allow for changing operation later
-    programMode = args.mode
-    viddir = definePath(args.viddir)
-    subdir = definePath(args.subdir)
-    fileOperator = fileAuditor("main")
-    testMode = False
-
-    validModes = ["submerge",
-            "subtag",
-            "organize",
-            "rename",
-            "interactive"]
-    
-    if programMode not in validModes:
-        raise ValueError("Mode %r not found." % programMode)
-    
-    mainMessenger = messenger("main")
-    mainMessenger.programInitMesg()
-    mainMessenger.say("Program starting...\n")
-
-    
-    if programMode == "submerge":
-        submerge(videoDir = viddir, subDir = subdir)
-
-    if testMode == True:
-        fileOperator.scanDirectory(verbose=True)
-        fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
-
-    fileOperator.findSisterFile(file=definePath("/home/logans/Submerge/submerge.py"), validFileExts=[".sh"])
-    exit(0)
-    
-
-# ------------------------------------------------------------------------------------------------
-
-
-def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir: pathlib.Path = None):
-    if subDir is None:
-        subDir = videoDir
-
-    print("Mode selected: submerge\n")
-    print("Looking for files...")
-
-    fileOperation = fileAuditor("submerge")
-    outDirectory = videoDir / "submerged"
-    outDirectory.mkdir(exist_ok=True)
-
-    videoFiles = fileOperation.scanDirectory(globPattern = "*.mkv", searchDir = videoDir, verbose=True)
-    # subFiles = fileOperation.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",".pgs",".idx",".sub"], searchDir = subDir, verbose=True)
-    
-    for srcfile in videoFiles:
-        subfile = fileOperation.findSisterFile(srcfile, [".srt",".ass",".ssa",".usf",".pgs",".idx"])
-        outfile = outDirectory / srcfile.name
-        if subfile.suffix == ".idx":
-            # merge subfile into mkv and set language to English (.idx and .sub pairs)
-            subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile, subfile.with_suffix(".sub")])
-        else:
-            # merge subfile into mkv and set language to English
-            subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile])
-
-
-
-if __name__ == "__main__":
-    main()
 
