@@ -142,12 +142,62 @@ class fileOperation(object):
         self.messenger.operationReport(self.successCount, self.errorCount, self.errorFiles, processedDirectory, outputDirectory)
 
 ################################### copy or move?
-    def moveFile(source: pathlib.Path, destination: pathlib.Path):
+    def moveFile(self, source: pathlib.Path, destination: pathlib.Path):
         try:
-            shutil.copy2(str(source), str(destination))
+            copy3(str(source), str(destination))
         except (FileNotFoundError, shutil.Error) as error:
             self.recordFileError(errorFile=source, errorStatus=error, errorExtra=destination, errorExtraMeta="destination")
             print(error)
         except Exception as error:
             print("An unknown error occurred: " + error)
 
+    def move(self, src: pathlib.Path, dst: pathlib.Path):
+        """
+        Recursively move a file or directory to another location. This is
+        similar to the Unix "mv" command.
+    
+        If the destination is a directory or a symlink to a directory, the source
+        is moved inside the directory. The destination path must not already
+        exist.
+    
+        If the destination already exists but is not a directory, it may be
+        overwritten depending on os.rename() semantics.
+    
+        If the destination is on our current filesystem, then rename() is used.
+        Otherwise, src is copied to the destination and then removed.
+        A lot more could be done here...  A look at a mv.c shows a lot of
+        the issues this implementation glosses over.
+
+        """
+        real_dst = dst
+        if os.path.isdir(dst):
+            if shutil._samefile(src, dst):
+                # We might be on a case insensitive filesystem,
+                # perform the rename anyway.
+                os.rename(src, dst)
+                return
+    
+            real_dst = os.path.join(dst, shutil._basename(src))
+            if os.path.exists(real_dst):
+                raise Error, f"Destination path 'real_dst' already exists"
+        try:
+            os.rename(src, real_dst)
+        except OSError:
+            if os.path.isdir(src):
+                if shutil._destinsrc(src, dst):
+                    raise Error, f"Cannot move a directory '{src}' into itself '{dst}'."
+                shutil.copytree(src, real_dst, symlinks=True)
+                shutil.rmtree(src)
+            else:
+                copy3(src, real_dst)
+        os.unlink(src)
+
+    def getHash(self, path: pathlib.Path):
+        if dir:
+            recursively hash dir
+        elif file:
+            hash file
+        return hash
+
+    def compareHash(self, file1: pathlib.Path, file2:pathlib.Path):
+        return getHash(file1) == getHash(file2)
