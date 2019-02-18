@@ -143,6 +143,7 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
             # merge subfile into mkv and set language to English
             subprocess.run(["mkvmerge", "-o", outfile, srcfile, "--language", "0:eng", "--track-name", "0:English", "--default-track", "0:0", subfile])
         print()
+        submergeOperation.move(src, procDirectory, integrity_check=True)
     
     submergeOperation.generateReport(processedDirectory=procDirectory, outputDirectory=outDirectory)
     # submerge operation done
