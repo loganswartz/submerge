@@ -36,6 +36,7 @@ import re
 from classes import messenger
 from classes import operation
 import platform
+import json
 
 
 # Wrapper for making paths from strings
@@ -148,6 +149,30 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
     submergeOperation.generateReport(processedDirectory=procDirectory, outputDirectory=outDirectory)
     # submerge operation done
 
+
+def subtag(mkvdir: pathlib.Path() = pathlib.Path.cwd(), override_lang: str):
+    subtagOperation = operation.fileOperation("subtag")
+
+    # add timestamp to temp file to ensure unique folder
+    timestamp = str(datetime.datetime.now()).split(" ")
+    # replace illegal filename characters (for Windows)
+    timestamp = timestamp[0]+"_"+".".join(timestamp[1].split(":"))
+
+    extractionFolder = pathlib.Path("/tmp/submerge_" + timestamp + "/")
+    extractionFolder.mkdir()
+
+    videoFiles = subtagOperation.scanDirectory(globPattern = "*.mkv", directory = mkvdir, verbose=True)
+    for srcfile in videoFiles:
+        trackLangPairs = {}
+        # fileComponents = subprocess.run(["mkvmerge", "-i", srcfile], stdout=subprocess.PIPE)
+        mkvmergeOutput = subprocess.run("mkvmerge", "-J", srcfile)
+        metadatajson = json.loads(mkvmergeOutput.stdout)
+        # parse all tracks, record subtitles track indexes and their documented language in the metadata
+        for track in metadatajson["tracks"]:
+            if track["type"] == "subtitles":
+                # print("Track " + str(track["id"]) + ": " + track["properties"]["language"])
+                trackLangPairs[track["id"]] = track["properties"]["language"]
+        print(trackLangPairs)
 
 if __name__ == "__main__":
     main()
