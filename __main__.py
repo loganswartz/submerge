@@ -26,7 +26,7 @@ aboutThisProgramShort = f"""
 
 import argparse
 import pathlib
-import subprocess
+mport subprocess
 import shutil
 import errno
 import os
@@ -37,6 +37,7 @@ from classes import messenger
 from classes import operation
 import platform
 import json
+from langdetect import detect_langs
 
 
 # Wrapper for making paths from strings
@@ -150,7 +151,7 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
     # submerge operation done
 
 
-def subtag(mkvdir: pathlib.Path() = pathlib.Path.cwd(), override_lang: str):
+def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(), override_lang: str):
     subtagOperation = operation.fileOperation("subtag")
 
     # add timestamp to temp file to ensure unique folder
@@ -160,19 +161,42 @@ def subtag(mkvdir: pathlib.Path() = pathlib.Path.cwd(), override_lang: str):
 
     extractionFolder = pathlib.Path("/tmp/submerge_" + timestamp + "/")
     extractionFolder.mkdir()
-
-    videoFiles = subtagOperation.scanDirectory(globPattern = "*.mkv", directory = mkvdir, verbose=True)
+    if videoDir.is_dir():
+        videoFiles = subtagOperation.scanDirectory(globPattern = "*.mkv", directory = videoDir, verbose=True)
+    else:
+        videoFiles = [videoDir]
+    
     for srcfile in videoFiles:
-        trackLangPairs = {}
         # fileComponents = subprocess.run(["mkvmerge", "-i", srcfile], stdout=subprocess.PIPE)
-        mkvmergeOutput = subprocess.run("mkvmerge", "-J", srcfile)
+        trackLangPairs = {}
+        mkvmergeOutput = subprocess.run(["mkvmerge", "-J", srcfile])
         metadatajson = json.loads(mkvmergeOutput.stdout)
+        
         # parse all tracks, record subtitles track indexes and their documented language in the metadata
         for track in metadatajson["tracks"]:
             if track["type"] == "subtitles":
                 # print("Track " + str(track["id"]) + ": " + track["properties"]["language"])
                 trackLangPairs[track["id"]] = track["properties"]["language"]
         print(trackLangPairs)
+
+        for track, lang in trackLangPairs:
+            exportedSubTrack = pathlib.Path(f"{srcfile.name}-sub{track}")
+            # iterate through tracks and look for those that are undefined.
+            # then, extract those tracks to a file and read that into langdetect
+            if trackLang == 'und':
+                subprocess.run(["mkvextract", srcfile, "tracks", f"{track}:{exportedSubTrack}"])
+                
+                # read file into langdetect (sadly mkvextract doesn't support outputting directly to stdout)
+                with open(exportedSubTrack) as subtitles:
+                    determinedLang = detect(subtitles.read())
+
+                # tag subtitle track with determinedLang
+                subprocess.run(["mkvpropedit", srcfile, "--edit", "track:" + track, "--set", "language=" + determinedLang])
+    
+    # cleanup operation
+    shutil.rmtree(extractionFolder)
+
+
 
 if __name__ == "__main__":
     main()
