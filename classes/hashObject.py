@@ -173,10 +173,9 @@ def main():
     print((f"{hashalgo1} is {format(md5speed/sha256speed, '.2f')}x faster "
            f"than {hashalgo2}."))
     print((f"{hashalgo2} is {format((1-(sha256speed/md5speed))*100, '.0f')}% "
-           f"slower than {hashalgo1}.")
-    
-    exit(0)
+           f"slower than {hashalgo1}."))
+
+
 
 if __name__ == "__main__":
     main()
-

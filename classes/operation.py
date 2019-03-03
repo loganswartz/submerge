@@ -41,7 +41,7 @@ class fileOperation(object):
         """
     
         if not recursive:
-            files = [i for i in directory.glob(globPattern) if file.is_file()]
+            files = [i for i in directory.glob(globPattern) if i.is_file()]
             """
             For those of you confused by list comprehensions (me), this is
             equivalent to:
@@ -53,7 +53,7 @@ class fileOperation(object):
             
             """
         else:
-            files = [i for i in directory.rglob(globPattern) if file.is_file()]
+            files = [i for i in directory.rglob(globPattern) if i.is_file()]
 
         if verbose == True:
             print("Found: ")

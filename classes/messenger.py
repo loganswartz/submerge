@@ -1,5 +1,4 @@
 import pathlib
-from __main__ import aboutThisProgramShort
 
 class messenger(object):
     """
@@ -22,7 +21,6 @@ class messenger(object):
             print(f"""
 # -----------------------------
 {doc}
-
 Author: {author}
 Version: {version}
 # -----------------------------
@@ -68,7 +66,7 @@ Version: {version}
         else:
             label = ""
         for key, val in dct.items():
-            print(f"{label}{str(key)}: {str(valcount in)}")
+            print(f"{label}{str(key)}: {str(val)}")
 
 
     def operationReport(self,

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-"""
-Submerge.py: A tool for batch-merging discrete subtitle files into their
+"""Submerge.py: A tool for batch-merging discrete subtitle files into their
 accompanying MKV video files.
 """
 
@@ -93,7 +92,10 @@ def main():
         raise ValueError(f"Mode {programMode} not found.")
     
     mainMessenger = messenger.messenger("main")
-    mainMessenger.programInitMesg()
+    mainMessenger.programInitMesg(doc=__doc__,
+                                  author=__author__,
+                                  version=__version__,
+                                  verbose=True)
     mainMessenger.say("Program starting...\n")
 
     # check for mkvmerge executable
@@ -129,7 +131,6 @@ def main():
                         file=definePath("/home/logans/Submerge/submerge.py"),
                         validFileExts=[".sh"])
 """ 
-    exit(0)
     
 
 # ----------------------------------------------------------------------------
