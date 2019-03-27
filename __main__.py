@@ -4,6 +4,17 @@
 accompanying MKV video files.
 """
 
+__version__ = "0.9"
+
+__author__ = "Logan Swartzendruber"
+__status__ = "Development"
+
+"""
+Class objects are CapitalizedWords
+Functions are snake_case
+Simple variables are CapWords
+"""
+
 # builtin modules
 import argparse
 import pathlib
@@ -21,26 +32,10 @@ from fuzzywuzzy import process
 from langdetect import detect_langs
 
 # my modules
-from classes import messenger
-from classes import operation
+from objects import messenger
+from objects.fileManipulator import fileManipulator
+from utils import definePath, SisterFileException
 
-
-
-__author__ = "Logan Swartzendruber"
-__version__ = "0.8"
-__status__ = "Development"
-
-
-
-# Wrapper for making paths from strings
-def definePath(path: str):
-    if path == None:
-        return pathlib.Path.cwd()
-    else:
-        return pathlib.Path(path).resolve()
-
-class SisterFileException(Exception):
-    pass
 
 
 def main():
@@ -49,47 +44,46 @@ def main():
     """
 
 
-    cmdargparser = argparse.ArgumentParser(
+    cmdparse = argparse.ArgumentParser(
             description=("A tool for batch-merging discrete subtitle files "
             "into their accompanying MKV video files, and other file "
             "manipulation."))
+
+
+    cmdparse.add_argument("-o",
+                          "--operation",
+                          help="set the file manipulation mode",
+                          type=str,
+                          default="interactive")
+    cmdparse.add_argument("-m",
+                          "--mediadir",
+                          help=("specify the directory containing media "
+                          "files to operate on"),
+                          type=pathlib.Path)
+    cmdparse.add_argument("-s", 
+                          "--subdir",
+                          help=("specify the directory containing "
+                          "subtitles to operate on"),
+                          type=pathlib.Path)
+    cmdparse.add_argument("-v",
+                          "--verbose",
+                          help="turn on verbose output",
+                          action='store_true')
     
-    cmdargparser.add_argument("-o",
-                              "--operation",
-                              help="set the file manipulation mode",
-                              type=str,
-                              default="interactive")
-    cmdargparser.add_argument("-m",
-                              "--mediadir",
-                              help=("specify the directory containing media "
-                              "files to operate on"),
-                              type=pathlib.Path)
-    cmdargparser.add_argument("-s", 
-                              "--subdir",
-                              help=("specify the directory containing "
-                              "subtitles to operate on"),
-                              type=pathlib.Path)
-    cmdargparser.add_argument("-v",
-                              "--verbose",
-                              help="turn on verbose output",
-                              action='store_true')
-    
-    args = cmdargparser.parse_args()
+    args = cmdparse.parse_args()
 
     # allow for changing operation later
     programMode = args.operation
     viddir = definePath(args.mediadir)
     subdir = definePath(args.subdir)
-    fileOperator = operation.fileOperation("main")
+    fileOperator = fileManipulator("main")
 
     validModes = ["submerge",
-            "subtag",
-            "organize",
-            "rename",
-            "interactive"]
-    
-    if programMode not in validModes:
-        raise ValueError(f"Mode {programMode} not found.")
+                  "subtag",
+                  "audit",
+                  "organize",
+                  "rename",
+                  "interactive"]
     
     mainMessenger = messenger.messenger("main")
     mainMessenger.programInitMesg(doc=__doc__,
@@ -112,9 +106,15 @@ def main():
     if not mkvmerge.exists():
         mainMessenger.sayError(("'mkvmerge' executable not found, operations "
                                 "utilizing mkvmerge will not be available."))
-    
-    if programMode == "submerge":
-        submerge(videoDir = viddir, subDir = subdir)
+    # validate and launch selected operation
+    if programMode not in validModes:
+        raise ValueError(f"Mode {programMode} not found.")
+    elif programMode == "submerge":
+        submerge(vidsrc = viddir, subsrc = subdir)
+    elif programMode == "subtag":
+        subtag(vidsrc = viddir)
+    elif programMode == "audit":
+        audit(vidsrc = viddir, subsrc = subdir)
 
     print()
     mainMessenger.say("Example of scanDirectory() on the CWD:")
@@ -136,7 +136,7 @@ def main():
 # ----------------------------------------------------------------------------
 
 
-def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
+def submerge(vidsrc: pathlib.Path = pathlib.Path.cwd(), subsrc = None):
     """
     Merges subtitles into their matching video files.
 
@@ -161,24 +161,24 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
 
     """
 
-    if subDir is None:
-        subDir = videoDir
+    if subsrc is None:
+        subsrc = vidsrc
 
-    mergeOp = operation.fileOperation("submerge")
+    mergeOp = fileManipulator("submerge")
     print("Mode selected: submerge\n")
     print("Looking for files...")
 
-    outDirectory = videoDir / "submerged"
-    procDirectory = videoDir / "processed"
+    outDirectory = vidsrc / "submerged"
+    procDirectory = vidsrc / "processed"
     outDirectory.mkdir(exist_ok=True)
     procDirectory.mkdir(exist_ok=True)
 
     videoFiles = mergeOp.scanDirectory(globPattern = "*.mkv",
-                                       directory = videoDir,
+                                       directory = vidsrc,
                                        verbose=True)
     subFiles = mergeOp.findFiletype(desiredExts = [".srt",".ass",".ssa",".usf",
                                                    ".pgs",".idx",".sub"],
-                                    directory = subDir,
+                                    directory = subsrc,
                                     recursive=True,
                                     verbose=True)
     
@@ -217,15 +217,16 @@ def submerge(videoDir: pathlib.Path = pathlib.Path.cwd(), subDir = None):
 
 
         print()
-        mergeOp.move(src, procDirectory, integrity_check=True)
+        mergeOp.move(vidsrc, procDirectory, integrity_check=True)
     
     mergeOp.generateReport(processedDirectory=procDirectory,
                            outputDirectory=outDirectory)
     # submerge operation done
 
 
-def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
-           override_lang: str = ""):
+def subtag(vidsrc: pathlib.Path() = pathlib.Path.cwd(),
+           override_lang: str = "",
+           force_check: bool = False):
     """
     Correctly tags the subtitle tracks of an mkv file.
 
@@ -237,6 +238,12 @@ def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
     tracks, and if a track with a 'language' field set to 'und' (undetermined),
     it dumps the subtitles and feeds them into langdetect, which determines
     the language of the subtitles and tags them as such.
+
+    If override_lang is set, any subtitle tracks with an 'und' language tag
+    will be tagged as the specified override language.
+    If force_check is set to True, all subtitle tracks will be parsed by
+    langdetect, regardless of metadata tags. Useful if you think a track has
+    been incorrectly tagged.
 
     ISO639_1_to_ISO639_2() converts the language code used by langdetect
     (ISO 639-1 specifically) and converts it to the scheme used in the MKV
@@ -306,7 +313,7 @@ def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
                 }
         return(langs[langCode])
 
-    tagOp = operation.fileOperation("subtag")
+    tagOp = fileManipulator("subtag")
 
     # add timestamp to temp file to ensure unique folder
     timestamp = str(datetime.datetime.now()).split(" ")
@@ -315,12 +322,12 @@ def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
 
     extractionFolder = pathlib.Path("/tmp/submerge_" + timestamp + "/")
     extractionFolder.mkdir()
-    if videoDir.is_dir():
+    if vidsrc.is_dir():
         videoFiles = tagOp.scanDirectory(globPattern = "*.mkv",
-                                         directory = videoDir,
+                                         directory = vidsrc,
                                          verbose=True)
     else:
-        videoFiles = [videoDir]
+        videoFiles = [vidsrc]
     
     for srcfile in videoFiles:
         trackLangPairs = {}
@@ -343,14 +350,16 @@ def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
         print(trackLangPairs)
 
         for track, lang in trackLangPairs:
-            exportedSubTrack = pathlib.Path(f"{srcfile.name}-sub{track}")
             # iterate through tracks and look for those that are undefined.
             # then, extract those tracks to a file & read that into langdetect
-            if trackLang == 'und':
+            if (((trackLang == 'und') and (override_lang == '')) or
+                (force_check)):
+            
+                exportedSubTrack = pathlib.Path(f"{srcfile.name}-sub{track}")
                 subprocess.run(["mkvextract",
                                 srcfile,
                                 "tracks",
-                                f"{track}:{exportedSubTrack}"])
+                                f"{track}:{str(exportedSubTrack.name)}"])
                 
                 """
                 Read the extracted file into langdetect (mkvextract doesn't
@@ -363,10 +372,35 @@ def subtag(videoDir: pathlib.Path() = pathlib.Path.cwd(),
                 subprocess.run(["mkvpropedit", srcfile, "--edit",
                                 f"track:{track}", "--set",
                                 f"language={determinedLang}"])
+            elif trackLang == 'und' and override_lang != '':
+
+                # tag subtitle track with override_lang
+                subprocess.run(["mkvpropedit", srcfile, "--edit",
+                                f"track:{track}", "--set",
+                                f"language={determinedLang}"])
+
+            else:
+                tagOp.say((f"Track language is set to {lang}, no need to"
+                            "change. Proceeding to next file..."))
     
     # cleanup operation
     shutil.rmtree(extractionFolder)
 
+
+def audit(vidsrc: pathlib.Path = pathlib.Path.cwd(), recursive: bool = True):
+    """
+    Scan a directory and audit all the files in it, noting any issues that
+    could be fixed.
+
+    No subtitles found
+    Discrete subtitles that could be integrated
+    Subtitle tracks set as 'und'
+    Mislabelled resolution
+
+    Issues that are audited include untagged subtitle tracks, no detected
+    subtitles, 
+    """
+    print("test")
 
 
 if __name__ == "__main__":

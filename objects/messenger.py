@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+# builtin modules
 import pathlib
 
 class messenger(object):

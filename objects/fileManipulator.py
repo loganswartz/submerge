@@ -1,16 +1,23 @@
+#!/usr/bin/env python3
+
+# builtin modules
 import pathlib
 import subprocess
 import shutil
 import errno
 import os
+import re
+
+# 3rd party modules
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
-import re
+
+# my modules
 from .messenger import messenger
 from .hashObject import getHash
 
 
-class fileOperation(object):
+class fileManipulator(object):
     """
     Object to perform file operations.
 
