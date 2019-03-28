@@ -39,57 +39,80 @@ def main():
     """
 
 
+    # main args
     cmdparse = argparse.ArgumentParser(
             description=("A tool for batch-merging discrete subtitle files "
             "into their accompanying MKV video files, and other file "
-            "manipulation."))
-
-
-    cmdparse.add_argument("-o",
-                          "--operation",
-                          help="set the file manipulation mode",
-                          type=str,
-                          default="interactive")
-    cmdparse.add_argument("-m",
-                          "--mediadir",
-                          help=("specify the directory containing media "
-                          "files to operate on"),
-                          type=pathlib.Path)
-    cmdparse.add_argument("-s", 
-                          "--subdir",
-                          help=("specify the directory containing "
-                          "subtitles to operate on"),
-                          type=pathlib.Path)
+            "manipulation."), conflict_handler="resolve")
     cmdparse.add_argument("-v",
                           "--verbose",
                           help="turn on verbose output",
-                          action='store_true')
-    
+                          action="store_true")
+    subparse = cmdparse.add_subparsers(help="operation types",dest="operation")
+
+    # merge args
+    mergeparse = subparse.add_parser("merge",
+                                     help="Merge subtitle files and mkv files")
+    mergeparse.add_argument("-m", "--media", type=lambda p: definePath(p),
+                            help=("Path to the directory containing media "
+                                  "files to operate on"))
+    mergeparse.add_argument("-s", "--subs", type=str, help=("Path to the "
+                            "directory containing subtitle files to operate "
+                            "on"))
+    # tag args
+    tagparse = subparse.add_parser("tag",
+                                   help=("Identity and label untagged tracks "
+                                   "in media files"))
+    tagparse.add_argument("-m", "--media", type=lambda p: definePath(p),
+                          help=("Path to the directory containing media files "
+                                "to operate on"))
+    tagparse.add_argument("-l", "--lang", type=str, help=("Tag override "
+                          "language"))
+
+    # mod args
+    modparse = subparse.add_parser("mod",
+                                   help="Modify track tags on media files")
+    modparse.add_argument("-m", "--media", type=lambda p: definePath(p),
+                          help=("Path to the directory containing media files "
+                                "to operate on"))
+
+    # other args
+    auditparse = subparse.add_parser("audit",
+                                   help="Analyze and audit media files")
+    auditparse.add_argument("-m", "--media", type=lambda p: definePath(p),
+                          help=("Path to the directory containing media files "
+                                "to operate on"))
+
+    organizeparse = subparse.add_parser("organize",
+                                   help="Organize media files")
+    organizeparse.add_argument("-m", "--media", type=lambda p: definePath(p),
+                               help=("Path to the directory containing media "
+                                     "files to operate on"))
+
+    interactiveparse = subparse.add_parser("interactive",
+                                   help="Interactive prompt")
+    interactiveparse.add_argument("-m", "--media",type=lambda p: definePath(p),
+                                  help=("Path to the directory containing "
+                                        "media files to operate on"))
+
+
     args = cmdparse.parse_args()
 
     # allow for changing operation later
-    programMode = args.operation
-    viddir = definePath(args.mediadir)
-    subdir = definePath(args.subdir)
     fileOperator = fileManipulator("main")
 
-    validModes = ["merge",
-                  "tag",
-                  "mod",
-                  "audit",
-                  "organize",
-                  "rename",
-                  "interactive"]
-    
     mainMessenger = messenger.messenger("main")
-    mainMessenger.programInitMesg(doc=__doc__,
-                                  author=__author__,
-                                  version=__version__,
-                                  verbose=True)
-    mainMessenger.say("Program starting...\n")
+    if args.verbose:
+        mainMessenger.programInitMesg(doc=__doc__,
+                                      author=__author__,
+                                      version=__version__,
+                                      verbose=True)
+        mainMessenger.say("Program starting...\n")
 
     # check for mkvmerge executable
-    if shutil.which("mkvmerge") == None:
+    if shutil.which("mkvmerge") != None:
+        mkvmerge = definePath(shutil.which("mkvmerge"))
+    else:
         if platform.system() == "Windows":
             mkvmerge = pathlib.PureWindowsPath(("C:/Program Files/MKVToolNix/"
                                                 "mkvmerge.exe"))
@@ -97,20 +120,28 @@ def main():
             mkvmerge = pathlib.PurePosixPath("/usr/bin/mkvmerge")
         # translates Pure path to regular path
         mkvmerge = pathlib.Path(mkvmerge).resolve()
-    else:
-        mkvmerge = definePath(shutil.which("mkvmerge"))
     if not mkvmerge.exists():
         mainMessenger.sayError(("'mkvmerge' executable not found, operations "
                                 "utilizing mkvmerge will not be available."))
+
+    operations = ["merge",
+                  "tag",
+                  "mod",
+                  "audit",
+                  "organize",
+                  "interactive"]
+
     # validate and launch selected operation
-    if programMode not in validModes:
-        raise ValueError(f"Mode {programMode} not found.")
-    elif programMode == "merge":
+    if args.operation not in operations:
+        raise ValueError(f"Mode {args.operation} not found.")
+    elif args.operation == "merge":
         merge(vidsrc = viddir, subsrc = subdir)
-    elif programMode == "tag":
+    elif args.operation == "tag":
         tag(vidsrc = viddir)
-    elif programMode == "audit":
+    elif args.operation == "audit":
         audit(vidsrc = viddir, subsrc = subdir)
+    elif args.operation == "interactive":
+        print(args.media)
 
     print()
     mainMessenger.say("Example of scanDirectory() on the CWD:")
@@ -120,14 +151,14 @@ def main():
     mainMessenger.say("Example of findFileType([\".py\", \".md\", \".swp\"]):")
     fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
     print()
-    
+
     mainMessenger.say(("Example of findSisterFile() looking for a sister or "
                        "type \".sh\" to \"merge.py\":"))
     fileOperator.findSisterFile(
                         file=definePath("/home/logans/Submerge/merge.py"),
                         validFileExts=[".sh"])
-""" 
-    
+"""
+
 
 # ----------------------------------------------------------------------------
 

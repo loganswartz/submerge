@@ -13,7 +13,7 @@ def definePath(path: str):
     if path == None:
         return Path.cwd()
     else:
-        return Path(path).resolve()
+        return Path(path).expanduser().resolve()
 
 class SisterFileException(Exception):
     pass
