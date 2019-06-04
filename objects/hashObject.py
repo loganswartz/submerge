@@ -13,7 +13,7 @@ import os
 import errno
 
 
-def getHash(inputPath: pathlib.Path, algorithm: str = "sha256"):
+def get_hash(inputPath: pathlib.Path, algorithm: str = "sha256"):
     """
     Calculate the hash of a given file object.
 
@@ -41,14 +41,14 @@ def getHash(inputPath: pathlib.Path, algorithm: str = "sha256"):
         Directory name is hashed, and inserted into the hash object for the
         directory as the first entry. This way, the final buffer for the hash
         object (before final digest) looks like this:
-        
+
            1. hash of directory name
           <sorted alphabetically by filename>:
               2. hash of contents of file1
               3. hash of contents of file2
               ... etc etc ...
               n. hash of contents of fileN
-        
+
         Why do I incorporate the name of the folder as a part of the folder's
         hash, but don't do the same for files? If I didn't hash the folder
         names, folders that have different names but have identical contents
@@ -74,10 +74,10 @@ def getHash(inputPath: pathlib.Path, algorithm: str = "sha256"):
         dirTitleHash.update(bytes(path.name, 'utf-8'))
         # add hash of dirname to overall hash
         hash.update(bytes(dirTitleHash.hexdigest(), 'utf-8'))
-        
+
         for child in path.iterdir():
             # Recursively call this function to get all children file hashes.
-            hashes[child.name] = getHash(child)
+            hashes[child.name] = get_hash(child)
 
         for key, value in sorted(hashes.items()):
             """
@@ -101,17 +101,17 @@ def getHash(inputPath: pathlib.Path, algorithm: str = "sha256"):
                 hash.update(data)
         return hash.hexdigest()
     else:
-        raise Exception(("getHash() encountered an object that evaluates false"
+        raise Exception(("get_hash() encountered an object that evaluates false"
                          "for both the 'pathlib.Path.is_dir()' AND "
                          "'pathlib.Path.is_file()' functions, unsure how to "
                          "process."))
 
 
-def compareHash(file1: pathlib.Path, file2:pathlib.Path):
+def compare_hash(file1: pathlib.Path, file2:pathlib.Path):
     """
     Takes 2 file objects, hashes them, and returns True if they match.
     """
-    return getHash(file1) == getHash(file2)
+    return get_hash(file1) == get_hash(file2)
 
 
 def main():
@@ -130,38 +130,38 @@ def main():
 
     hash1begin = time.time()
     for i in range(itervalue):
-        fileHash = getHash(src, hashalgo1)
+        fileHash = get_hash(src, hashalgo1)
     hash1end = time.time()
     hash2begin = time.time()
     for i in range(itervalue):
-        file2Hash = getHash(dst, hashalgo1)
+        file2Hash = get_hash(dst, hashalgo1)
     hash2end = time.time()
-    
+
     print(f"{src.name} hash: {fileHash}\n{dst.name} hash: {file2Hash}")
-    
+
     hash3begin = time.time()
     for i in range(itervalue):
-        fileHash = getHash(src, hashalgo2)
+        fileHash = get_hash(src, hashalgo2)
     hash3end = time.time()
     hash4begin = time.time()
     for i in range(itervalue):
-        file2Hash = getHash(dst, hashalgo2)
+        file2Hash = get_hash(dst, hashalgo2)
     hash4end = time.time()
-    
+
     hash1time = hash1end - hash1begin
     hash2time = hash2end - hash2begin
     hash3time = hash3end - hash3begin
     hash4time = hash4end - hash4begin
-    
+
     # hash speed in MB/s
     md5speed     = (((os.path.getsize(src)+os.path.getsize(dst))/2) /
                    (((hash1time+hash2time)/2)/itervalue))/1000000
     sha256speed  = (((os.path.getsize(src)+os.path.getsize(dst))/2) /
                    (((hash3time+hash4time)/2)/itervalue))/1000000
-    
+
     print(f"{src.name} hash: {fileHash}")
     print(f"{dst.name} hash: {file2Hash}")
-    print(f"Hashes are identical? --> {str(compareHash(src, dst))}")
+    print(f"Hashes are identical? --> {str(compare_hash(src, dst))}")
     print()
     print(f"Hash1 time: {format(hash1time, '.2f')}")
     print(f"Hash2 time: {format(hash2time, '.2f')}")

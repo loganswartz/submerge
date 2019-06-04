@@ -24,7 +24,7 @@ class fileManipulator(object):
     An instance of this object should be used for all file operations, as it
     has some useful methods and built-in error recording for when those methods
     fail.
-    
+
     """
 
     def __init__(self, opname: str):
@@ -35,7 +35,7 @@ class fileManipulator(object):
         self.messenger = messenger(self.role)
 
 
-    def scanDirectory(self,
+    def parse_dir(self,
                       globPattern: str = "*",
                       directory: pathlib.Path = pathlib.Path.cwd(),
                       recursive: bool = False,
@@ -43,21 +43,21 @@ class fileManipulator(object):
         """
         Returns an array of file objects (in pathlib.Path objects) in the given
         dir that match a glob.
-        
+
         Defaults to the CWD, and a '*' glob.
         """
-    
+
         if not recursive:
             files = [i for i in directory.glob(globPattern) if i.is_file()]
             """
             For those of you confused by list comprehensions (me), this is
             equivalent to:
-            
+
             files = []
             for file in directory.glob(globPattern):
                 if file.is_file():
                     files.append(file)
-            
+
             """
         else:
             files = [i for i in directory.rglob(globPattern) if i.is_file()]
@@ -69,7 +69,7 @@ class fileManipulator(object):
         return files
 
 
-    def findFiletype(self,
+    def find_type(self,
                      desiredExts: list,
                      directory: pathlib.Path = pathlib.Path.cwd(),
                      recursive: bool = False,
@@ -77,7 +77,7 @@ class fileManipulator(object):
         """
         Searches a directory for files of the desired type.
 
-        This method calls scanDirectory() and sorts out the desired files. It
+        This method calls parse_dir() and sorts out the desired files. It
         sorts based on an array of given file extensions such as:
         [".txt", ".mkv", ".pkg"]
 
@@ -89,8 +89,8 @@ class fileManipulator(object):
         """
 
         files = {}
-        
-        for file in self.scanDirectory(directory=directory,
+
+        for file in self.parse_dir(directory=directory,
                                        recursive=recursive):
             if file.suffix in desiredExts:
                 try:
@@ -107,9 +107,9 @@ class fileManipulator(object):
 
         #########################
         for ext in desiredExts:
-            files[ext] = self.scanDirectory(globPattern="*" + ext)
+            files[ext] = self.parse_dir(globPattern="*" + ext)
         #########################
-        
+
         """
 
         if verbose == True:
@@ -119,7 +119,7 @@ class fileManipulator(object):
         return files
 
 
-    def regexExtraction(self,
+    def regex_extract(self,
                         file: pathlib.Path,
                         regexName: str,
                         regexResultGroup: int = 0):
@@ -151,14 +151,14 @@ class fileManipulator(object):
             return ""
 
 
-    def findSisterFile(self,
+    def find_sister(self,
                        file: pathlib.Path,
                        validFileExts: list = None,
                        fileList: list = None,
                        indent: int = 0):
         """
         Finds a matching subtitle file for some given file[s].
-        
+
         This function attempts to search for a subtitle file that matches some
         given file[s], using these 3 different approaches (in the order shown):
 
@@ -180,7 +180,7 @@ class fileManipulator(object):
         matching, and considers a match to be 2 filenames that match at more
         than 75% similarity.
 
-        You can pass this method the output of findFiletype() (an array of
+        You can pass this method the output of find_type() (an array of
         pathlib.Path objects) instead of the validFileExts array to prevent
         parsing the directory 1000x times or more for large operations
         (essentially just a 'Big O' improvement).
@@ -192,9 +192,9 @@ class fileManipulator(object):
 
         if fileList == None and validFileExts == None:
             raise SisterFileException(("Not enough information given to"
-                                        "findSisterFile()."))
+                                        "find_sister()."))
         if fileList == None:
-            fileList = self.findFiletype(validFileExts, file.parent,
+            fileList = self.find_type(validFileExts, file.parent,
                                          recursive=True)
 
         self.messenger.inform(f"Searching for sister file to {str(file)}...",
@@ -209,19 +209,19 @@ class fileManipulator(object):
                 self.successCount += 1
                 return file.with_suffix(filetype)
 
-        
+
         self.messenger.say(("Perfect match not found, deferring to SE "
                             "search..."), indent=indent+1)
 
         # ------------------ 2 ------------------ #
-        se = self.regexExtraction(file, "seasonEpisode")
+        se = self.regex_extract(file, "seasonEpisode")
         if se == "":
             self.messenger.say("SE not found, skipping SE search.",
                                indent=indent+1)
         else:
             for filetype, array in fileList.items():
                 for item in array:
-                    if self.regexExtraction(item, "seasonEpisode") == se:
+                    if self.regex_extract(item, "seasonEpisode") == se:
                         self.messenger.say("Found ---> " +
                                            str(file.with_suffix(filetype)) +
                                            "\n",
@@ -255,13 +255,13 @@ class fileManipulator(object):
             self.messenger.say((f"Found (Strength: {str(bestMatch[1])}) ---> "
                                 f"{str(bestMatch[0])}\n"),
                                 indent=indent+1)
-            
+
             self.successCount += 1
             return pathlib.Path(bestMatch[0]).resolve()
 
 
         self.messenger.say("No sister file found.\n", indent=indent+1)
-        
+
         """
         If we reached this point, all search methods failed to find a match,
         so we throw a FileNotFoundError that will get logged.
@@ -271,7 +271,7 @@ class fileManipulator(object):
                                 str(file.with_suffix(".subtitle")))
 
 
-    def recordFileError(self, errorFile: pathlib.Path, errorStatus: str): 
+    def record_error(self, errorFile: pathlib.Path, errorStatus: str): 
         """
         Records file errors that occur during a file operation.
         """
@@ -282,8 +282,7 @@ class fileManipulator(object):
         self.messenger.sayError(f"An error on {errorFile.name} was recorded.")
 
 
-    def generateReport(self,
-                       processedDirectory: pathlib.Path,
+    def gen_report(self, processedDirectory: pathlib.Path,
                        outputDirectory: pathlib.Path):
         """
         Wrapper function for messenger.operationReport() so that some variables
@@ -317,10 +316,10 @@ class fileManipulator(object):
             else:
                 shutil.move(source, destination)
         except (FileNotFoundError, shutil.Error) as error:
-            self.recordFileError(errorFile=source,
-                                 errorStatus=error,
-                                 errorExtra=destination,
-                                 errorExtraMeta="destination")
+            self.record_error(errorFile=source,
+                              errorStatus=error,
+                              errorExtra=destination,
+                              errorExtraMeta="destination")
             print(error)
         except Exception as error:
             print("An unknown error occurred: " + error)
@@ -330,7 +329,7 @@ class fileManipulator(object):
         """
         Wrapper of shutil.copy2() that adds file hashing to check for file
         integrity.
-        
+
         This function hashes src, attempts to copy the file object to dst, and
         then hashes the dst file and compares the hashes. If they don't match,
         the dst file is thrown out and it tries again.
@@ -341,7 +340,7 @@ class fileManipulator(object):
 
         maxAttempts = 3
         attempts = 0
-        
+
         # Initial copy and hashing.
         preCopyHash = hashObject.getHash(src)
         shutil.copy2(src, dst)
@@ -362,7 +361,7 @@ class fileManipulator(object):
             # Copy again and rehash
             shutil.copy2(str(src), str(dst))
             postCopyHash = hashObject.getHash(dst)
-            
+
             attempts += 1
 
         if preCopyHash == postCopyHash:

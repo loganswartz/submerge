@@ -78,7 +78,7 @@ Version: {version}
                         errors: dict,
                         processedDir: pathlib.Path, 
                         outputDir: pathlib.Path):
-        
+
         errorsString = ""
         for listkey, error in errors.items():
             errorsString += (f"   ERROR: {str(error.get('file'))} --> "
@@ -86,8 +86,8 @@ Version: {version}
         if errorsString == "":
             errorsString = "    <none>"
         print((f"""
----------------- Report ---------------- 
-       
+---------------- Report ----------------
+
 Operation type:     {self.role}
 # of successes:     {str(successNum)}
 # of errors:        {str(errorNum)}

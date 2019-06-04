@@ -10,9 +10,8 @@ __author__ = "Logan Swartzendruber"
 __status__ = "Development"
 
 """
-Class objects are CapitalizedWords
+Variables / objects are CapWords
 Functions are snake_case
-Simple variables are CapWords
 """
 
 # builtin modules
@@ -29,7 +28,7 @@ import os
 from submerge.objects import messenger
 from submerge.objects.fileManipulator import fileManipulator
 from submerge.utils import definePath
-from submerge.operations import merge, tag, mod, audit
+from submerge.operations import merge, tag, mod, audit, rename
 
 
 
@@ -66,8 +65,10 @@ def main():
     tagparse.add_argument("-m", "--media", type=lambda p: definePath(p),
                           help=("Path to the directory containing media files "
                                 "to operate on"))
-    tagparse.add_argument("-l", "--lang", type=str, help=("Tag override "
-                          "language"))
+    tagparse.add_argument("-s", "--subs", type=lambda o: json.loads(o),
+                          help=("Tag override language for subs"))
+    tagparse.add_argument("-a", "--audio", type=lambda o: json.loads(o),
+                          help=("Tag override language for audio"))
 
     # mod args
     modparse = subparse.add_parser("mod",
@@ -88,6 +89,15 @@ def main():
     organizeparse.add_argument("-m", "--media", type=lambda p: definePath(p),
                                help=("Path to the directory containing media "
                                      "files to operate on"))
+
+    renameparse = subparse.add_parser("rename",
+                                   help="Rename media files")
+    renameparse.add_argument("-m", "--media",type=lambda p: definePath(p),
+                                  help=("Path to the directory containing "
+                                        "media files to operate on"))
+    renameparse.add_argument("-r", "--regex", type=str,
+                                  help=("Path to the directory containing "
+                                        "media files to operate on"))
 
     interactiveparse = subparse.add_parser("interactive",
                                    help="Interactive prompt")
@@ -124,37 +134,37 @@ def main():
         mainMessenger.sayError(("'mkvmerge' executable not found, operations "
                                 "utilizing mkvmerge will not be available."))
 
-    operations = ["merge",
-                  "tag",
-                  "mod",
-                  "audit",
-                  "organize",
-                  "interactive"]
-
-    # validate and launch selected operation
-    if args.operation not in operations:
-        raise ValueError(f"Mode {args.operation} not found.")
-    elif args.operation == "merge":
-        merge(vidsrc = viddir, subsrc = subdir)
+    # launch selected operation
+    if args.operation == "merge":
+        merge(vidsrc = args.media, subsrc = args.subs)
     elif args.operation == "tag":
-        tag(vidsrc = viddir)
+        tag(vidsrc = args.media, audio_langs=args.audio, subs_langs=args.subs)
     elif args.operation == "audit":
-        audit(vidsrc = viddir, subsrc = subdir)
-    elif args.operation == "interactive":
-        print(args.media)
+        audit(vidsrc = args.media)
+    elif args.operation == "organize":
+        organize(vidsrc = args.media)
+    elif args.operation == "rename":
+        rename(vidsrc = args.media, pattern = "")
+    elif args.operation == "interactive" or args.operation == None:
+        try:
+            print(args.media)
+        except:
+            print("Defaulting to interactive...")
+            print()
+            mainMessenger.say("Example of parse_dir() on the CWD:")
+            fileOperator.parse_dir(verbose=True)
+    else:
+        raise ValueError(f"Mode {args.operation} not found.")
 
-    print()
-    mainMessenger.say("Example of scanDirectory() on the CWD:")
-    fileOperator.scanDirectory(verbose=True)
 """
     print()
-    mainMessenger.say("Example of findFileType([\".py\", \".md\", \".swp\"]):")
-    fileOperator.findFiletype([".py", ".md", ".swp"], verbose=True)
+    mainMessenger.say("Example of find_type([\".py\", \".md\", \".swp\"]):")
+    fileOperator.find_type([".py", ".md", ".swp"], verbose=True)
     print()
 
-    mainMessenger.say(("Example of findSisterFile() looking for a sister or "
+    mainMessenger.say(("Example of find_sister() looking for a sister or "
                        "type \".sh\" to \"merge.py\":"))
-    fileOperator.findSisterFile(
+    fileOperator.find_sister(
                         file=definePath("/home/logans/Submerge/merge.py"),
                         validFileExts=[".sh"])
 """
