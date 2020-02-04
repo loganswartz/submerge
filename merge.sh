@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ----------------------------------
-# Submerge.sh
+# merge.sh
 # 
 # A tool for batch-merging discrete subtitle files into their accompanying MKV video files
 # 
