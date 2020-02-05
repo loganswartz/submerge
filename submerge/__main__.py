@@ -19,9 +19,13 @@ parser.add_argument('-v', '--verbose', action='store_true')
 dir_parser = argparse.ArgumentParser(add_help=False)
 dir_parser.add_argument('-d', '--dir', help='A directory containing mkv files', metavar='<path>', type=pathlib.Path, default='.')
 
+def get_docstring(obj):
+    lines = [line.strip() for line in obj.__doc__.split('\n') if line.strip()]
+    return lines[0]
+
 # add the subparsers
 subparsers = parser.add_subparsers(help='Module to use', dest='module')
-parsers = {mod: subparsers.add_parser(mod, parents=[dir_parser]) for mod in available_modules}
+parsers = {mod: subparsers.add_parser(mod, parents=[dir_parser], description=get_docstring(available_modules[mod].Operator)) for mod in available_modules}
 
 # initialize all operators to properly load all argparse options
 # if we parse the options before loading the operators, the help messages will be missing all the module arguments
