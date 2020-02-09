@@ -6,7 +6,7 @@ import argparse
 
 # my modules
 import submerge.modules
-
+from submerge.utils import get_docstring
 
 # check for available modules
 available_modules = {name: getattr(submerge.modules, name) for name in submerge.modules.__all__}
@@ -17,11 +17,7 @@ parser.add_argument('-v', '--verbose', action='store_true')
 
 # parent parser
 dir_parser = argparse.ArgumentParser(add_help=False)
-dir_parser.add_argument('-d', '--dir', help='A directory containing mkv files', metavar='<path>', type=pathlib.Path, default='.')
-
-def get_docstring(obj):
-    lines = [line.strip() for line in obj.__doc__.split('\n') if line.strip()]
-    return lines[0]
+dir_parser.add_argument('-d', '--dir', help='A directory containing mkv files', type=pathlib.Path, default='.')
 
 # add the subparsers
 subparsers = parser.add_subparsers(help='Module to use', dest='module')

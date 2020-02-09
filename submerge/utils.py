@@ -88,3 +88,10 @@ def pretty_time_delta(seconds):
     else:
         return f"{seconds:.2f}s"
 
+def get_docstring(obj):
+    if obj.__doc__:
+        lines = [line.strip() for line in obj.__doc__.split('\n') if line.strip()]
+        return lines[0]
+    else:
+        return None
+

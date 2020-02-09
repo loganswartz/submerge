@@ -25,7 +25,7 @@ class MergeOperator(object):
     logged and the operation continues on the next file.
     """
     def __init__(self, subparser):
-        subparser.add_argument('-s', '--subtitles', help='A directory containing subtitles',  metavar='<path>', type=pathlib.Path, default='.')
+        subparser.add_argument('-s', '--subtitles', help='A directory containing subtitles', metavar='DIR', type=pathlib.Path, default='.')
 
     def process(self, parser):
         args = parser.parse_args()

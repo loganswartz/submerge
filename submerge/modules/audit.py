@@ -6,6 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 import time
 from submerge.utils import pretty_time_delta
+import itertools
 
 
 class AuditOperator(object):
@@ -27,13 +28,11 @@ class AuditOperator(object):
             files = self.args.dir.glob('*.mkv')
 
         # process files
-        undefined_tracks = {'subtitles': [], 'audio': []}
         with ThreadPoolExecutor() as executor:
-            work = executor.map(self._check_tracks, files)
-            # every call to self._check_tracks returns an dictionary like undefined_tracks, here we merge them all together
-            for file in work:
-                for type in undefined_tracks:
-                    undefined_tracks[type].extend(file[type])
+            undefined_tracks = executor.map(self._check_track, files)
+
+        # flatten list
+        undefined_tracks = itertools.chain.from_iterable(undefined_tracks)
 
         # print report
         self._report(undefined_tracks)
@@ -42,28 +41,38 @@ class AuditOperator(object):
         metadata = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
         return json.loads(metadata.stdout)
 
-    def _check_tracks(self, file):
-        undefined_tracks = {'subtitles': [], 'audio': []}
+    def _check_track(self, file):
+        undefined_tracks = []
         metadata = self._get_metadata(file)
 
         for track in metadata['tracks']:
             if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
-                undefined_tracks[track['type']].append(file)
+                undefined_tracks.append({'file': file, 'track': track['properties']['number'], 'type': track['type']})
 
         return undefined_tracks
 
     def _report(self, results):
-        for type in results:
-            results[type].sort()
-            if results[type]:
+        # sort by filename
+        results = list(results)
+        results.sort(key=lambda entry: entry['file'])
+        # create dictionary to sort out by track types
+        types = {item['type']: [] for item in results}
+        # actually sort the results into different lists
+        for entry in results:
+            types[entry['type']].append(entry)
+
+        if len(types) == 0:
+            print('No problems found.')
+        else:
+            for type, entries in types.items():
                 print(f"The following files contained an undefined {type} track:")
-                for file in results[type]:
-                    print(f"    {str(file.relative_to(self.args.dir))}")
-            else:
-                print('No problems found.')
+                for entry in entries:
+                    print(f"    {str(entry['file'].relative_to(self.args.dir))} (Track {entry['track']})")
+
         if self.args.timed:
             time_elapsed = pretty_time_delta(time.perf_counter()-self.start_time)
             print(f"Time elapsed: {time_elapsed}")
 
 
 Operator = AuditOperator
+
