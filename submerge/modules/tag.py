@@ -40,7 +40,12 @@ class TagOperator(object):
         with ThreadPoolExecutor() as executor:
             results = executor.map(lambda file: self._edit_track(file, args.track, language=args.language), files)
 
-        print('All files modified.')
+        if args.verbose:
+            print('Command outputs:')
+            print([result.stdout for result in results])
+
+        if not args.simulate:
+            print('All files modified.')
 
     def _edit_track(self, file, track, **kwargs):
         cmd = ['mkvpropedit', str(file.expanduser().resolve()), '--edit', f'track:{track}']

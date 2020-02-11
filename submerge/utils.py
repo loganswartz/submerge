@@ -28,3 +28,6 @@ def get_docstring(obj):
     else:
         return None
 
+def AbsolutePath(path):
+    return pathlib.Path(path).expanduser().resolve()
+
