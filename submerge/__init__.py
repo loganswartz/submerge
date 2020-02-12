@@ -4,6 +4,7 @@
 import pathlib
 import argparse
 import sys
+import shutil
 
 # my modules
 import submerge.modules
@@ -20,7 +21,7 @@ def main():
 
     # parent parser
     dir_parser = argparse.ArgumentParser(add_help=False)
-    dir_parser.add_argument('-d', '--dir', help='A directory containing mkv files', type=AbsolutePath, default='.')
+    dir_parser.add_argument('path', help='A path to an mkv file, or a directory of files', type=AbsolutePath, default='.', nargs='?')
 
     # add the subparsers
     subparsers = parser.add_subparsers(help='Module to use', dest='module')
@@ -37,6 +38,11 @@ def main():
         sys.exit(1)
 
     # any processing we need to do before running the module
+    # check for mkvtoolnix
+    mkvtoolnix = ['mkvmerge','mkvpropedit','mkvextract','mkvinfo']
+    missing_mkvtoolnix = [exec for exec in mkvtoolnix if not shutil.which(exec)]
+    if missing_mkvtoolnix:
+        print(f"{', '.join(missing_mkvtoolnix)} not found.")
 
     # pass control to the specified module
     operator = operators[args.module]

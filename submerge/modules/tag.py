@@ -32,10 +32,12 @@ class TagOperator(object):
     def process(self, parser):
         args = parser.parse_args()
         self.args = args
-        if args.recursive:
-            files = args.dir.rglob('*.mkv')
+        if args.path.is_file() and args.path.suffix == '.mkv':
+            files = [args.path]
+        elif args.recursive:
+            files = args.path.rglob('*.mkv')
         else:
-            files = args.dir.glob('*.mkv')
+            files = args.path.glob('*.mkv')
 
         with ThreadPoolExecutor() as executor:
             results = executor.map(lambda file: self._edit_track(file, args.track, language=args.language), files)

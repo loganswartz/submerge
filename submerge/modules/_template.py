@@ -13,3 +13,4 @@ class SomeOperator(object):
 
 
 Operator = SomeOperator
+

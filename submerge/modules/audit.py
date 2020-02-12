@@ -22,10 +22,16 @@ class AuditOperator(object):
         self.args = parser.parse_args()
         if self.args.timed:
             self.start_time = time.perf_counter()
-        if self.args.recursive:
-            files = self.args.dir.rglob('*.mkv')
+        if self.args.path.is_file():
+            files = [self.args.path]
+        elif self.args.recursive:
+            files = list(self.args.path.rglob('*.mkv'))
         else:
-            files = self.args.dir.glob('*.mkv')
+            files = list(self.args.path.glob('*.mkv'))
+
+        if not files:
+            print('No files found.')
+            return
 
         # process files
         with ThreadPoolExecutor() as executor:
@@ -67,7 +73,11 @@ class AuditOperator(object):
             for type, entries in types.items():
                 print(f"The following files contained an undefined {type} track:")
                 for entry in entries:
-                    print(f"    {str(entry['file'].relative_to(self.args.dir))} (Track {entry['track']})")
+                    if self.args.path.is_file():
+                        name = str(entry['file'])
+                    else:
+                        name = str(entry['file'].relative_to(self.args.path))
+                    print(f"    {name} (Track {entry['track']})")
 
         if self.args.timed:
             time_elapsed = pretty_time_delta(time.perf_counter()-self.start_time)
