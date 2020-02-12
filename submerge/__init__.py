@@ -20,12 +20,13 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true')
 
     # parent parser
-    dir_parser = argparse.ArgumentParser(add_help=False)
-    dir_parser.add_argument('path', help='A path to an mkv file, or a directory of files', type=AbsolutePath, default='.', nargs='?')
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument('path', help='A path to an mkv file, or a directory of files (default: %(default)s)', type=AbsolutePath, default='.', nargs='?')
+    parent_parser.add_argument('-r', '--recursive', help='Recurse into directories', action='store_true')
 
     # add the subparsers
     subparsers = parser.add_subparsers(help='Module to use', dest='module')
-    parsers = {mod: subparsers.add_parser(mod, parents=[dir_parser], description=get_docstring(available_modules[mod].Operator)) for mod in available_modules}
+    parsers = {mod: subparsers.add_parser(mod, parents=[parent_parser], description=get_docstring(available_modules[mod].Operator)) for mod in available_modules}
 
     # initialize all operators to properly load all argparse options
     # if we parse the options before loading the operators, the help messages will be missing all the module arguments

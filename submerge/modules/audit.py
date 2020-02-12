@@ -5,8 +5,9 @@ import subprocess
 import json
 from concurrent.futures import ThreadPoolExecutor
 import time
-from submerge.utils import pretty_time_delta
 import itertools
+
+from submerge.utils import pretty_time_delta, get_metadata
 
 
 class AuditOperator(object):
@@ -14,8 +15,8 @@ class AuditOperator(object):
     Scan a directory and audit all the files in it, noting any issues that could be fixed.
     """
     def __init__(self, subparser):
-        subparser.add_argument('-r', '--recursive', help='Recurse into directories', action='store_true')
         subparser.add_argument('-t', '--timed', help='Report the time taken to audit', action='store_true')
+        subparser.add_argument('-p', '--pattern', help='Produce a pattern that can be used with the \'tracks\' module', action='store_true')
 
     def process(self, parser):
         # parse args
@@ -33,23 +34,45 @@ class AuditOperator(object):
             print('No files found.')
             return
 
+        # decide the operation to carry out
+        if self.args.pattern:
+            func = self._pattern
+        else:
+            func = self._check_track
+
         # process files
         with ThreadPoolExecutor() as executor:
-            undefined_tracks = executor.map(self._check_track, files)
+            results = executor.map(func, files)
 
-        # flatten list
-        undefined_tracks = itertools.chain.from_iterable(undefined_tracks)
+        if self.args.pattern:
+            for result in results:
+                print(f"{result[1]} - {result[0].relative_to(self.args.path)}")
+        else:
+            # flatten list
+            undefined_tracks = itertools.chain.from_iterable(results)
 
-        # print report
-        self._report(undefined_tracks)
+            # print report
+            self._report(undefined_tracks)
 
-    def _get_metadata(self, file):
-        metadata = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
-        return json.loads(metadata.stdout)
+    def _pattern(self, file):
+        try:
+            metadata = get_metadata(file)
+        except KeyError:
+            print(f'ERROR: {file} could not be read.')
+            return
+
+        pattern = []
+        for track in metadata['tracks']:
+            try:
+                pattern.append(str(track['properties']['number']) + track['type'][0])
+            except KeyError:
+                continue
+        pattern.sort(key=lambda track: track[0])
+        return (file, ':'.join(pattern))
 
     def _check_track(self, file):
         undefined_tracks = []
-        metadata = self._get_metadata(file)
+        metadata = get_metadata(file)
 
         for track in metadata['tracks']:
             if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
@@ -77,7 +100,7 @@ class AuditOperator(object):
                         name = str(entry['file'])
                     else:
                         name = str(entry['file'].relative_to(self.args.path))
-                    print(f"    {name} (Track {entry['track']})")
+                    print(f"    (Track {entry['track']}) {name}")
 
         if self.args.timed:
             time_elapsed = pretty_time_delta(time.perf_counter()-self.start_time)

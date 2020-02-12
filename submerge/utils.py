@@ -2,6 +2,8 @@
 
 # builtins
 import pathlib
+import subprocess
+import json
 from math import floor
 
 
@@ -30,4 +32,9 @@ def get_docstring(obj):
 
 def AbsolutePath(path):
     return pathlib.Path(path).expanduser().resolve()
+
+def get_metadata(file: pathlib.Path):
+    proc = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
+    metadata = json.loads(proc.stdout)
+    return metadata
 

@@ -4,8 +4,9 @@
 import pathlib
 from enum import Enum
 import subprocess
-import json
 from concurrent.futures import ThreadPoolExecutor
+
+from submerge.utils import get_metadata
 
 
 class TracksOperator(object):
@@ -13,7 +14,7 @@ class TracksOperator(object):
         subparser.add_argument('-o', '--old-order', help='The current track ordering')
         subparser.add_argument('-n', '--new-order', help='The new desired track ordering')
         subparser.add_argument('-p', '--pattern', help='Only modify a file if it matches the specified track pattern')
-        subparser.add_argument('-r', '--recursive', help='Recurse into directories', action='store_true')
+        subparser.add_argument('-s', '--simulate', help='Print out the command to be executed instead of actually executing it', action='store_true')
 
     def process(self, parser):
         self.args = parser.parse_args()
@@ -56,10 +57,13 @@ class TracksOperator(object):
         cmd = ['mkvpropedit', str(file)]
         for old, new in zip(self.args.old_order.split(':'), self.args.new_order.split(':')):
             cmd += ['--edit', f"track:{old}", '--set', f"track-number={new}"]
-        # print(' '.join(cmd))
 
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE)
-        return proc
+        if self.args.simulate:
+            print(' '.join(cmd))
+            return cmd
+        else:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE)
+            return proc
 
     def _test(self, file):
         class TrackType(Enum):
@@ -70,8 +74,7 @@ class TracksOperator(object):
         user_pairings = {int(pair[0]): TrackType(pair[1]) for pair in self.args.pattern.split(':')}
 
         try:
-            proc = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
-            metadata = json.loads(proc.stdout)
+            metadata = get_metadata(file)
             real_pairings = {int(track['properties']['number']): TrackType[track['type']] for track in metadata['tracks']}
         except KeyError:
             print(f'ERROR: {file} failed to be read.')

@@ -16,14 +16,13 @@ def language(string):
         lang = pycountry.languages.lookup(string)
         return lang
     except LookupError:
-        raise ValueError
+        raise ValueError from None
 
 
 class TagOperator(object):
     def __init__(self, subparser):
         subparser.add_argument('-l', '--language', help='Language the track will be set to', type=language, required=True)
         subparser.add_argument('-t', '--track', help='Track to modify', type=int, required=True)
-        subparser.add_argument('-r', '--recursive', help='Recurse into directories', action='store_true')
         subparser.add_argument('-s', '--simulate', help='Print out the command to be executed instead of actually executing it', action='store_true')
         # TODO
         # subparser.add_argument('-u', '--only-undefined', help='Only modify tracks when they are undefined', action='store_true')
@@ -44,7 +43,8 @@ class TagOperator(object):
 
         if args.verbose:
             print('Command outputs:')
-            print([result.stdout for result in results])
+            for output in results:
+                print(output.stdout.decode('utf-8'))
 
         if not args.simulate:
             print('All files modified.')
