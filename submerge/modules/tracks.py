@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # builtins
-import pathlib
 from enum import Enum
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -82,6 +81,7 @@ class TracksOperator(object):
 
         # check if user_pairings is a subset of real_pairings
         return user_pairings.items() <= real_pairings.items()
+
 
 Operator = TracksOperator
 

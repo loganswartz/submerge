@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # builtins
-import pathlib
 import argparse
 import sys
 import shutil
@@ -40,7 +39,7 @@ def main():
 
     # any processing we need to do before running the module
     # check for mkvtoolnix
-    mkvtoolnix = ['mkvmerge','mkvpropedit','mkvextract','mkvinfo']
+    mkvtoolnix = ['mkvmerge', 'mkvpropedit', 'mkvextract', 'mkvinfo']
     missing_mkvtoolnix = [exec for exec in mkvtoolnix if not shutil.which(exec)]
     if missing_mkvtoolnix:
         print(f"{', '.join(missing_mkvtoolnix)} not found.")

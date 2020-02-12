@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-import pathlib
-import subprocess
-import json
 from concurrent.futures import ThreadPoolExecutor
 import time
 import itertools
@@ -103,7 +100,7 @@ class AuditOperator(object):
                     print(f"    (Track {entry['track']}) {name}")
 
         if self.args.timed:
-            time_elapsed = pretty_time_delta(time.perf_counter()-self.start_time)
+            time_elapsed = pretty_time_delta(time.perf_counter() - self.start_time)
             print(f"Time elapsed: {time_elapsed}")
 
 

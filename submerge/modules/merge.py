@@ -2,7 +2,6 @@
 
 # builtins
 import pathlib
-import argparse
 
 
 class MergeOperator(object):

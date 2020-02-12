@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # builtins
-import pathlib
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
 import pycountry

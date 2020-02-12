@@ -4,7 +4,6 @@
 import pathlib
 import subprocess
 import json
-from math import floor
 
 
 def pretty_time_delta(seconds):
@@ -12,7 +11,7 @@ def pretty_time_delta(seconds):
     days, _seconds = divmod(_seconds, 86400)
     hours, _seconds = divmod(_seconds, 3600)
     minutes, _seconds = divmod(_seconds, 60)
-    seconds = seconds - float((days*86400)+(hours*3600)+(minutes*60))
+    seconds = seconds - float((days * 86400) + (hours * 3600) + (minutes * 60))
     if days > 0:
         return f"{days}d {hours}h {minutes}m {seconds:.0f}s"
     elif hours > 0:
@@ -30,8 +29,10 @@ def get_docstring(obj):
     else:
         return None
 
+
 def AbsolutePath(path):
     return pathlib.Path(path).expanduser().resolve()
+
 
 def get_metadata(file: pathlib.Path):
     proc = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
