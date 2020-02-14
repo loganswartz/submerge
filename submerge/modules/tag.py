@@ -49,7 +49,7 @@ class TagOperator(object):
             print('All files modified.')
 
     def _edit_track(self, file, track, **kwargs):
-        cmd = ['mkvpropedit', str(file.expanduser().resolve()), '--edit', f'track:{track}']
+        cmd = ['mkvpropedit', str(file.expanduser().resolve()), '--edit', f'track:@{track}']
         for key, value in kwargs.items():
             cmd.extend(['--set', f'{key}={value.alpha_3}'])
 

@@ -10,7 +10,13 @@ import submerge.modules
 from submerge.utils import get_docstring, AbsolutePath
 
 
-def main():
+def main(_args = None):
+    # allow running through the command line
+    if _args:
+        if _args[0] != 'submerge':
+           _args = ['submerge'] + _args
+        sys.argv = _args
+
     # check for available modules
     available_modules = {name: getattr(submerge.modules, name) for name in submerge.modules.__all__}
 

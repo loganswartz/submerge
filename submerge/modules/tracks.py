@@ -55,7 +55,7 @@ class TracksOperator(object):
     def _modify_track(self, file):
         cmd = ['mkvpropedit', str(file)]
         for old, new in zip(self.args.old_order.split(':'), self.args.new_order.split(':')):
-            cmd += ['--edit', f"track:{old}", '--set', f"track-number={new}"]
+            cmd += ['--edit', f"track:@{old}", '--set', f"track-number={new}"]
 
         if self.args.simulate:
             print(' '.join(cmd))

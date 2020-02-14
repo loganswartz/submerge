@@ -71,9 +71,12 @@ class AuditOperator(object):
         undefined_tracks = []
         metadata = get_metadata(file)
 
-        for track in metadata['tracks']:
-            if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
-                undefined_tracks.append({'file': file, 'track': track['properties']['number'], 'type': track['type']})
+        try:
+            for track in metadata['tracks']:
+                if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
+                    undefined_tracks.append({'file': file, 'track': track['properties']['number'], 'type': track['type']})
+        except KeyError:
+            print(f"ERROR: {file} could not be read, data may be incorrect")
 
         return undefined_tracks
 
