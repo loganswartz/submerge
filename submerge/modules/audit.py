@@ -3,8 +3,31 @@
 from concurrent.futures import ThreadPoolExecutor
 import time
 import itertools
+import collections
+from typing import NamedTuple, Any
+import pathlib
 
-from submerge.utils import pretty_time_delta, get_metadata
+from submerge.utils import pretty_time_delta, get_metadata, get_files, get_track_pattern, get_docstring
+
+
+class TestResult(NamedTuple):
+    passed: bool
+    info: Any
+
+    def __bool__(self):
+        return self.passed
+
+
+class FileResult(NamedTuple):
+    file: pathlib.Path
+    tests: list
+
+
+def get_test_func_name(func):
+    func_name = func.__name__.replace('_test_', '')
+    words = [word.strip().lower() for word in func_name.split('_') if word.strip()]
+    name = [word[0].upper() + word[1:] for word in words]
+    return ' '.join(name)
 
 
 class AuditOperator(object):
@@ -14,93 +37,123 @@ class AuditOperator(object):
     def __init__(self, subparser):
         subparser.add_argument('-t', '--timed', help='Report the time taken to audit', action='store_true')
         subparser.add_argument('-p', '--pattern', help='Produce a pattern that can be used with the \'tracks\' module', action='store_true')
+        subparser.add_argument('-f', '--format', choices=['category', 'individual'], default='category')
+
+    @property
+    def tests(self):
+        tests = {}
+        for attr in dir(self):
+            if '_test_' in attr:
+                func = getattr(self, attr)
+                name = get_docstring(func) or get_test_func_name(func)
+                tests[name] = func
+        return tests
 
     def process(self, parser):
         # parse args
         self.args = parser.parse_args()
+
         if self.args.timed:
             self.start_time = time.perf_counter()
-        if self.args.path.is_file():
-            files = [self.args.path]
-        elif self.args.recursive:
-            files = list(self.args.path.rglob('*.mkv'))
-        else:
-            files = list(self.args.path.glob('*.mkv'))
 
-        if not files:
-            print('No files found.')
-            return
-
-        # decide the operation to carry out
-        if self.args.pattern:
-            func = self._pattern
-        else:
-            func = self._check_track
+        files = get_files(self.args.path, self.args.recursive)
 
         # process files
         with ThreadPoolExecutor() as executor:
-            results = executor.map(func, files)
+            results = executor.map(self.check_file, files)
 
-        if self.args.pattern:
-            for result in results:
-                print(f"{result[1]} - {result[0].relative_to(self.args.path)}")
-        else:
-            # flatten list
-            undefined_tracks = itertools.chain.from_iterable(results)
+        self.report(results, format=self.args.format)
 
-            # print report
-            self._report(undefined_tracks)
-
-    def _pattern(self, file):
+    def check_file(self, file):
+        if self.args.verbose:
+            print(f"Checking {file.relative_to(self.args.path)}....")
         try:
             metadata = get_metadata(file)
         except KeyError:
             print(f'ERROR: {file} could not be read.')
             return
 
-        pattern = []
-        for track in metadata['tracks']:
-            try:
-                pattern.append(str(track['properties']['number']) + track['type'][0])
-            except KeyError:
-                continue
-        pattern.sort(key=lambda track: track[0])
-        return (file, ':'.join(pattern))
+        # perform tests
+        tests = {name: test(file, metadata) for name, test in self.tests.items()}
 
-    def _check_track(self, file):
+        return FileResult(file, tests)
+
+    def _test_pattern(self, file, metadata):
+        if not self.args.pattern:
+            return TestResult(True, None)
+
+        pattern = get_track_pattern(metadata)
+
+        # sort by track number, then by track type
+        pattern.sort(key=lambda entry: entry[0])
+        track_ordering = {'v': 1, 'a': 2, 's': 3}
+        pattern.sort(key=lambda entry: track_ordering[entry[1]])
+
+        return TestResult(False, ':'.join([f"{track}{type}" for (track, type) in pattern]))
+
+    def _test_improperly_ordered_tracks(self, file, metadata):
+        pattern = get_track_pattern(metadata)
+
+        # sort by track number, then by track type
+        pattern.sort(key=lambda entry: entry[0])
+        track_ordering = {'v': 1, 'a': 2, 's': 3}
+        pattern.sort(key=lambda entry: track_ordering[entry[1]])
+
+        properly_ordered = [int(track) for track, type in pattern] == sorted([int(track) for track, type in pattern])
+
+        # convert pattern to pretty string
+        tracks = [f"{track}{type}" for track, type in pattern]
+        pattern_string = ':'.join(tracks)
+
+        return TestResult(properly_ordered, pattern_string)
+
+    def _test_undefined_tracks(self, file, metadata):
         undefined_tracks = []
-        metadata = get_metadata(file)
-
         try:
             for track in metadata['tracks']:
                 if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
-                    undefined_tracks.append({'file': file, 'track': track['properties']['number'], 'type': track['type']})
+                    undefined_tracks.append(track['properties']['number'])
         except KeyError:
             print(f"ERROR: {file} could not be read, data may be incorrect")
 
-        return undefined_tracks
+        return TestResult(not bool(undefined_tracks), undefined_tracks)
 
-    def _report(self, results):
-        # sort by filename
+    def report(self, results, format = 'category'):
         results = list(results)
-        results.sort(key=lambda entry: entry['file'])
-        # create dictionary to sort out by track types
-        types = {item['type']: [] for item in results}
-        # actually sort the results into different lists
-        for entry in results:
-            types[entry['type']].append(entry)
+        if not results:
+            print('No files found.')
+            return
 
-        if len(types) == 0:
+        # filter out any files where there aren't any positive tests
+        results = [result for result in results if not all(result.tests.values())]
+        if self.args.pattern:
+            results = [FileResult(file, {'Pattern': tests.get('Pattern')}) for file, tests in results]
+
+        # sort by filename
+        results.sort(key=lambda entry: entry.file)
+
+        if len(results) == 0:
             print('No problems found.')
         else:
-            for type, entries in types.items():
-                print(f"The following files contained an undefined {type} track:")
-                for entry in entries:
-                    if self.args.path.is_file():
-                        name = str(entry['file'])
-                    else:
-                        name = str(entry['file'].relative_to(self.args.path))
-                    print(f"    (Track {entry['track']}) {name}")
+            if format == 'individual':
+                for file, tests in results:
+                    filename = file.relative_to(self.args.path)
+                    print(f"{filename}:")
+                    for test, passed in tests.items():
+                        if not passed:
+                            print(f"    {test}: {passed}")
+            elif format == 'category':
+                final = collections.defaultdict(list)
+                for file, tests in results:
+                    for test, passed in tests.items():
+                        if not passed:
+                            final[test].append((file, passed))
+
+                for test, items in final.items():
+                    print(f"{test}:")
+                    for file, result in items:
+                        filename = file.relative_to(self.args.path)
+                        print(f"    {result.info} - {filename}")
 
         if self.args.timed:
             time_elapsed = pretty_time_delta(time.perf_counter() - self.start_time)
