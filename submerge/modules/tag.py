@@ -3,19 +3,16 @@
 # builtins
 from concurrent.futures import ThreadPoolExecutor
 import subprocess
+
+# 3rd party
 import pycountry
+
+# this module
+from submerge.utils import language
 
 # monkeypatch to handle langdetect returning nonstandard identifiers
 # pycountry.languages.lookup('cmn').alpha_2 = 'zh-cn'
 # pycountry.languages.lookup('yue').alpha_2 = 'zh-tw'
-
-
-def language(string):
-    try:
-        lang = pycountry.languages.lookup(string)
-        return lang
-    except LookupError:
-        raise ValueError from None
 
 
 class TagOperator(object):

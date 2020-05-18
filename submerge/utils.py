@@ -74,3 +74,10 @@ class InvertableDict(dict):
                 new[value].append(key)
         return new
 
+def language(string):
+    try:
+        lang = pycountry.languages.lookup(string)
+        return lang
+    except LookupError:
+        raise ValueError from None
+
