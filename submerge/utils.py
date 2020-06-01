@@ -36,7 +36,8 @@ def AbsolutePath(path):
 
 
 def get_metadata(file: pathlib.Path):
-    proc = subprocess.run(['mkvmerge', '-J', str(file)], stdout=subprocess.PIPE)
+    cmd = ['mkvmerge', '-J', str(file)]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
     metadata = json.loads(proc.stdout)
     return metadata
 
@@ -64,15 +65,6 @@ def get_track_pattern(metadata):
             continue
     return pattern
 
-
-class InvertableDict(dict):
-    def inverted(self):
-        values = {val for arr in self.values() for val in arr}
-        new = InvertableDict({value: [] for value in values})
-        for key, values in self.items():
-            for value in values:
-                new[value].append(key)
-        return new
 
 def language(string):
     try:
