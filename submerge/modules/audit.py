@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
 
-from concurrent.futures import ThreadPoolExecutor
-import time
-import itertools
+# Imports {{{
+# builtins
 import collections
-from typing import NamedTuple, Any
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+import logging
 import pathlib
+import time
+from typing import Iterable, NamedTuple, Any, Optional
 
-from submerge.utils import pretty_time_delta, get_metadata, get_files, get_track_pattern, get_docstring
+# 3rd party
+import click
+
+# local modules
+from submerge.modules.base import path_args
+from submerge.utils import (
+    pretty_time_delta,
+    get_metadata,
+    get_files,
+    get_track_pattern,
+    get_docstring,
+)
+
+# }}}
+
+
+log = logging.getLogger(__name__)
 
 
 class TestResult(NamedTuple):
@@ -20,129 +40,79 @@ class TestResult(NamedTuple):
 
 class FileResult(NamedTuple):
     file: pathlib.Path
-    tests: list
+    tests: Optional[dict]
 
 
-def get_test_func_name(func):
-    func_name = func.__name__.replace('_test_', '')
-    words = [word.strip().lower() for word in func_name.split('_') if word.strip()]
-    name = [word[0].upper() + word[1:] for word in words]
-    return ' '.join(name)
-
-
-class AuditOperator(object):
+@click.command()
+@path_args
+@click.option(
+    "-t",
+    "--timed",
+    help="Report the time taken to audit",
+    is_flag=True,
+)
+@click.option(
+    "-p",
+    "--pattern",
+    help="Produce a pattern that can be used with the 'tracks' module",
+    is_flag=True,
+)
+@click.option(
+    "-f",
+    "--format",
+    help="Method that should be used to organize results",
+    type=click.Choice(["category", "individual"]),
+    default="category",
+    show_default=True,
+)
+def audit(paths, recursive, timed, pattern, format):
     """
-    Scan a directory and audit all the files in it, noting any issues that could be fixed.
+    Find issues in the given files and report them.
     """
-    def __init__(self, subparser):
-        subparser.add_argument('-t', '--timed', help='Report the time taken to audit', action='store_true')
-        subparser.add_argument('-p', '--pattern', help='Produce a pattern that can be used with the \'tracks\' module', action='store_true')
-        subparser.add_argument('-f', '--format', choices=['category', 'individual'], default='category')
 
-    @property
-    def tests(self):
-        tests = {}
-        for attr in dir(self):
-            if '_test_' in attr:
-                func = getattr(self, attr)
-                name = get_docstring(func) or get_test_func_name(func)
-                tests[name] = func
-        return tests
+    # parse args
+    if timed:
+        start_time = time.perf_counter()
 
-    def process(self, parser):
-        # parse args
-        self.args = parser.parse_args()
+    files = get_files(paths, recursive)
 
-        if self.args.timed:
-            self.start_time = time.perf_counter()
+    # process files
+    results = []
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(partial(check_file, pattern=pattern), file) for file in files]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                results.append(future.result())
+            except TypeError as e:
+                log.error(e)
 
-        files = get_files(self.args.path, self.args.recursive)
-
-        # process files
-        with ThreadPoolExecutor() as executor:
-            results = executor.map(self.check_file, files)
-
-        self.report(results, format=self.args.format)
-
-    def check_file(self, file):
-        if self.args.verbose:
-            print(f"Checking {file.relative_to(self.args.path)}....")
-        try:
-            metadata = get_metadata(file)
-        except KeyError:
-            print(f'ERROR: {file} could not be read.')
-            return
-
-        # perform tests
-        tests = {name: test(file, metadata) for name, test in self.tests.items()}
-
-        return FileResult(file, tests)
-
-    def _test_pattern(self, file, metadata):
-        if not self.args.pattern:
-            return TestResult(True, None)
-
-        pattern = get_track_pattern(metadata)
-
-        # sort by track number, then by track type
-        pattern.sort(key=lambda entry: entry[0])
-        track_ordering = {'v': 1, 'a': 2, 's': 3}
-        pattern.sort(key=lambda entry: track_ordering[entry[1]])
-
-        return TestResult(False, ':'.join([f"{track}{type}" for (track, type) in pattern]))
-
-    def _test_improperly_ordered_tracks(self, file, metadata):
-        pattern = get_track_pattern(metadata)
-
-        # sort by track number, then by track type
-        pattern.sort(key=lambda entry: entry[0])
-        track_ordering = {'v': 1, 'a': 2, 's': 3}
-        pattern.sort(key=lambda entry: track_ordering[entry[1]])
-
-        properly_ordered = [int(track) for track, type in pattern] == sorted([int(track) for track, type in pattern])
-
-        # convert pattern to pretty string
-        tracks = [f"{track}{type}" for track, type in pattern]
-        pattern_string = ':'.join(tracks)
-
-        return TestResult(properly_ordered, pattern_string)
-
-    def _test_undefined_tracks(self, file, metadata):
-        undefined_tracks = []
-        try:
-            for track in metadata['tracks']:
-                if track['type'] in ['subtitles', 'audio'] and track['properties']['language'] == 'und':
-                    undefined_tracks.append(track['properties']['number'])
-        except KeyError:
-            print(f"ERROR: {file} could not be read, data may be incorrect")
-
-        return TestResult(not bool(undefined_tracks), undefined_tracks)
-
-    def report(self, results, format = 'category'):
-        results = list(results)
+    def report(results: Iterable[FileResult], pattern, format="category"):
         if not results:
-            print('No files found.')
+            log.info("No files found.")
             return
 
         # filter out any files where there aren't any positive tests
         results = [result for result in results if not all(result.tests.values())]
-        if self.args.pattern:
-            results = [FileResult(file, {'Pattern': tests.get('Pattern')}) for file, tests in results]
+        if pattern:
+            results = [
+                FileResult(file, {"Pattern": tests.get("Pattern")})
+                for file, tests in results
+            ]
 
         # sort by filename
         results.sort(key=lambda entry: entry.file)
 
         if len(results) == 0:
-            print('No problems found.')
+            log.info("No problems found.")
         else:
-            if format == 'individual':
+            if format == "individual":
                 for file, tests in results:
-                    filename = file.relative_to(self.args.path)
-                    print(f"{filename}:")
+                    # filename = file.relative_to(pathlib.Path.cwd())
+                    log.info(f"{file.name}:")
                     for test, passed in tests.items():
                         if not passed:
-                            print(f"    {test}: {passed}")
-            elif format == 'category':
+                            log.info(f"    {test}: {passed.info}")
+            elif format == "category":
                 final = collections.defaultdict(list)
                 for file, tests in results:
                     for test, passed in tests.items():
@@ -150,15 +120,90 @@ class AuditOperator(object):
                             final[test].append((file, passed))
 
                 for test, items in final.items():
-                    print(f"{test}:")
+                    log.info(f"{test}:")
                     for file, result in items:
-                        filename = file.relative_to(self.args.path)
-                        print(f"    {result.info} - {filename}")
+                        # filename = file.relative_to(pathlib.Path.cwd())
+                        log.info(f"    {result.info} - {file.name}")
 
-        if self.args.timed:
-            time_elapsed = pretty_time_delta(time.perf_counter() - self.start_time)
-            print(f"Time elapsed: {time_elapsed}")
+        if timed:
+            time_elapsed = pretty_time_delta(time.perf_counter() - start_time)
+            log.info(f"Time elapsed: {time_elapsed}")
 
 
-Operator = AuditOperator
+    report(results, pattern, format=format)
 
+
+def tests():
+    def get_test_func_name(func):
+        func_name = func.__name__.replace("_test_", "")
+        words = [word.strip().lower() for word in func_name.split("_") if word.strip()]
+        name = [word[0].upper() + word[1:] for word in words]
+        return " ".join(name)
+
+    return {
+        get_docstring(func) or get_test_func_name(func): func
+        for name, func in globals().items()
+        if name.startswith("_test_")
+    }
+
+
+def check_file(file, pattern):
+    log.debug(f"Checking {file.name}....")
+    try:
+        metadata = get_metadata(file)
+    except KeyError:
+        log.error(f"ERROR: {file} could not be read.")
+        return FileResult(file, None)
+
+    # perform tests
+    results = {name: test(file, metadata, pattern) for name, test in tests().items()}
+
+    return FileResult(file, results)
+
+
+def _test_pattern(file, metadata, pattern):
+    if not pattern:
+        return TestResult(True, None)
+
+    track_pattern = get_track_pattern(metadata)
+
+    # sort by track number, then by track type
+    track_pattern.sort(key=lambda entry: entry[0])
+    track_ordering = {"v": 1, "a": 2, "s": 3}
+    track_pattern.sort(key=lambda entry: track_ordering[entry[1]])
+
+    return TestResult(False, ":".join([f"{track}{type}" for (track, type) in track_pattern]))
+
+
+def _test_improperly_ordered_tracks(file, metadata, pattern):
+    track_pattern = get_track_pattern(metadata)
+
+    # sort by track number, then by track type
+    track_pattern.sort(key=lambda entry: entry[0])
+    track_ordering = {"v": 1, "a": 2, "s": 3}
+    track_pattern.sort(key=lambda entry: track_ordering[entry[1]])
+
+    properly_ordered = [int(track) for track, _ in track_pattern] == sorted(
+        [int(track) for track, _ in track_pattern]
+    )
+
+    # convert pattern to pretty string
+    tracks = [f"{track}{type}" for track, type in track_pattern]
+    pattern_string = ":".join(tracks)
+
+    return TestResult(properly_ordered, pattern_string)
+
+
+def _test_undefined_tracks(file, metadata, pattern):
+    undefined_tracks = []
+    try:
+        for track in metadata["tracks"]:
+            if (
+                track["type"] in ["subtitles", "audio"]
+                and track["properties"]["language"] == "und"
+            ):
+                undefined_tracks.append(track["properties"]["number"])
+    except KeyError:
+        log.info(f"ERROR: {file} could not be read, data may be incorrect")
+
+    return TestResult(not bool(undefined_tracks), undefined_tracks)

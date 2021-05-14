@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 
+# Imports {{{
+# builtins
+import logging
 
-class SomeOperator(object):
-    def __init__(self, subparser):
-        pass
+# 3rd party
+import click
 
-    def process(self, parser):
-        pass
+# local modules
+from submerge.modules.base import Handler
+
+# }}}
 
 
-Operator = SomeOperator
+log = logging.getLogger(__name__)
 
+
+@click.command()
+def template():
+    ...

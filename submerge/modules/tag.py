@@ -1,62 +1,74 @@
 #!/usr/bin/env python3
 
+# Imports {{{
 # builtins
 from concurrent.futures import ThreadPoolExecutor
+import logging
 import subprocess
 
 # 3rd party
-import pycountry
+import click
 
 # this module
-from submerge.utils import language
+from submerge.modules.base import path_args
+from submerge.utils import get_files, language, quote_cmd
 
-# monkeypatch to handle langdetect returning nonstandard identifiers
-# pycountry.languages.lookup('cmn').alpha_2 = 'zh-cn'
-# pycountry.languages.lookup('yue').alpha_2 = 'zh-tw'
-
-
-class TagOperator(object):
-    def __init__(self, subparser):
-        subparser.add_argument('-l', '--language', help='Language the track will be set to', type=language, required=True)
-        subparser.add_argument('-t', '--track', help='Track to modify', type=int, required=True)
-        subparser.add_argument('-s', '--simulate', help='Print out the command to be executed instead of actually executing it', action='store_true')
-        # TODO
-        # subparser.add_argument('-u', '--only-undefined', help='Only modify tracks when they are undefined', action='store_true')
-        # subparser.add_argument('-c', '--confirm', help='Ask for confirmation before processing', action='store_true')
-
-    def process(self, parser):
-        args = parser.parse_args()
-        self.args = args
-        if args.path.is_file() and args.path.suffix == '.mkv':
-            files = [args.path]
-        elif args.recursive:
-            files = args.path.rglob('*.mkv')
-        else:
-            files = args.path.glob('*.mkv')
-
-        with ThreadPoolExecutor() as executor:
-            results = executor.map(lambda file: self._edit_track(file, args.track, language=args.language), files)
-
-        if args.verbose:
-            print('Command outputs:')
-            for output in results:
-                print(output.stdout.decode('utf-8'))
-
-        if not args.simulate:
-            print('All files modified.')
-
-    def _edit_track(self, file, track, **kwargs):
-        cmd = ['mkvpropedit', str(file.expanduser().resolve()), '--edit', f'track:@{track}']
-        for key, value in kwargs.items():
-            cmd.extend(['--set', f'{key}={value.alpha_3}'])
-
-        if self.args.simulate:
-            print(cmd)
-            return cmd
-        else:
-            propedit = subprocess.run(cmd, stdout=subprocess.PIPE)
-            return propedit
+# }}}
 
 
-Operator = TagOperator
+log = logging.getLogger(__name__)
 
+# TODO
+# @click.option('-u', '--only-undefined', help='Only modify tracks when they are undefined', is_flag=True)
+# @click.option('-c', '--confirm', help='Ask for confirmation before processing', is_flag=True)
+
+
+@click.command()
+@path_args
+@click.option(
+    "-l",
+    "--language",
+    help="Set the language of a track",
+    metavar="TRACK LANGUAGE",
+    type=(int, language),
+    nargs=2,
+    required=True,
+)
+@click.option(
+    "-s",
+    "--simulate",
+    help="Print out the command to be executed instead of actually executing it",
+    is_flag=True,
+)
+def tag(paths, recursive, language, simulate):
+    """
+    Modify the track attributes of a given file.
+    """
+
+    files = get_files(paths, recursive)
+    track, lang = language
+
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(
+            lambda file: edit_track(file, track, language=lang, simulate=simulate),
+            files,
+        )
+
+    log.debug("Command outputs:")
+    for output in results:
+        log.debug(output)
+
+    if not simulate:
+        log.info("All files modified.")
+
+
+def edit_track(file, track, simulate=False, **kwargs):
+    cmd = ["mkvpropedit", str(file.expanduser().resolve()), "--edit", f"track:@{track}"]
+    for key, value in kwargs.items():
+        cmd.extend(["--set", f"{key}={value.alpha_3}"])
+
+    if simulate:
+        log.info(quote_cmd(cmd))
+        return cmd
+    else:
+        return subprocess.check_output(cmd, text=True)

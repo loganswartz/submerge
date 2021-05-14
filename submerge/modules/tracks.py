@@ -1,87 +1,126 @@
 #!/usr/bin/env python3
 
+# Imports {{{
 # builtins
-from enum import Enum
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
+from functools import partial
+import logging
+import subprocess
 
-from submerge.utils import get_metadata
+# 3rd party
+import click
+
+# local modules
+from submerge.modules.base import path_args
+from submerge.utils import get_files, get_metadata, quote_cmd
+
+# }}}
 
 
-class TracksOperator(object):
-    def __init__(self, subparser):
-        subparser.add_argument('-o', '--old-order', help='The current track ordering')
-        subparser.add_argument('-n', '--new-order', help='The new desired track ordering')
-        subparser.add_argument('-p', '--pattern', help='Only modify a file if it matches the specified track pattern')
-        subparser.add_argument('-s', '--simulate', help='Print out the command to be executed instead of actually executing it', action='store_true')
+log = logging.getLogger(__name__)
 
-    def process(self, parser):
-        self.args = parser.parse_args()
-        if self.args.path.is_file():
-            files = [self.args.path]
-        elif self.args.recursive:
-            files = list(self.args.path.rglob('*.mkv'))
+
+@click.command()
+@path_args
+@click.option("-n", "--new-order", help="The new desired track ordering", required=True)
+@click.option(
+    "-p",
+    "--pattern",
+    help="Only modify a file if it matches the specified track pattern",
+)
+@click.option(
+    "--strict", help="Only match a file if it matches the pattern exactly", is_flag=True
+)
+@click.option(
+    "-s",
+    "--simulate",
+    help="Print out the command to be executed instead of actually executing it",
+    is_flag=True,
+)
+def tracks(paths, recursive, new_order, pattern, strict, simulate):
+    """
+    Reorder the tracks of a file.
+
+    If the --strict flag is not passed, any pattern that is a subset of the
+    track ordering of a file will match that file. AKA, if a file has an ordering
+    of 1v:2a:3s:4s, and you pass a pattern of 1v:2a:3s, that will match by default
+    because the entire pattern can fit within the existing track ordering.
+    """
+    files = get_files(paths, recurse=recursive)
+
+    if not files:
+        log.info("No files found.")
+        return
+
+    results = {"pass": [], "fail": []}
+    for file in files:
+        if not pattern or (pattern and test(file, pattern, strict=strict)):
+            results["pass"].append(file)
         else:
-            files = list(self.args.path.glob('*.mkv'))
+            results["fail"].append(file)
 
-        if not files:
-            print('No files found.')
-            return
+    results["pass"].sort()
+    results["fail"].sort()
 
-        results = {'pass': [], 'fail': []}
-        for file in files:
-            if not self.args.pattern or (self.args.pattern and self._test(file)):
-                results['pass'].append(file)
-            else:
-                results['fail'].append(file)
+    if pattern:
+        log.info("The following files matched the pattern:")
+        for file in results["pass"]:
+            log.info(f"    {file.name}")
+        log.debug('The following files did not match the pattern:')
+        for file in results['fail']:
+            log.debug(f"    {file.name}")
 
-        results['pass'].sort()
-        results['fail'].sort()
+        click.confirm("\nContinue?", abort=True)
 
-        if self.args.pattern:
-            print('The following files matched the pattern:')
-            for file in results['pass']:
-                print(f"    {file.relative_to(self.args.path)}")
-            print('The following files did not match the pattern:')
-            for file in results['fail']:
-                print(f"    {file.relative_to(self.args.path)}")
+    # process files
+    with ThreadPoolExecutor() as executor:
+        processed = executor.map(
+            partial(modify_track, new_order=new_order, simulate=simulate),
+            results["pass"],
+        )
 
-        # process files
-        with ThreadPoolExecutor() as executor:
-            processed = executor.map(self._modify_track, results['pass'])
-
-        return processed
-
-    def _modify_track(self, file):
-        cmd = ['mkvpropedit', str(file)]
-        for old, new in zip(self.args.old_order.split(':'), self.args.new_order.split(':')):
-            cmd += ['--edit', f"track:@{old}", '--set', f"track-number={new}"]
-
-        if self.args.simulate:
-            print(' '.join(cmd))
-            return cmd
-        else:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE)
-            return proc
-
-    def _test(self, file):
-        class TrackType(Enum):
-            video = 'v'
-            audio = 'a'
-            subtitles = 's'
-
-        user_pairings = {int(pair[0]): TrackType(pair[1]) for pair in self.args.pattern.split(':')}
-
-        try:
-            metadata = get_metadata(file)
-            real_pairings = {int(track['properties']['number']): TrackType[track['type']] for track in metadata['tracks']}
-        except KeyError:
-            print(f'ERROR: {file} failed to be read.')
-            return False
-
-        # check if user_pairings is a subset of real_pairings
-        return user_pairings.items() <= real_pairings.items()
+    return processed
 
 
-Operator = TracksOperator
+def modify_track(file, new_order, simulate):
+    cmd = ["mkvpropedit", str(file)]
+    for old, new in enumerate(new_order.split(":"), 1):
+        cmd += ["--edit", f"track:@{old}", "--set", f"track-number={new}"]
 
+    if simulate:
+        log.info(quote_cmd(cmd))
+        return cmd
+    else:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE)
+        return proc
+
+
+def test(file, pattern, strict=True):
+    class TrackType(Enum):
+        video = "v"
+        audio = "a"
+        subtitles = "s"
+
+    user_pairings = {int(pair[0]): TrackType(pair[1]) for pair in pattern.split(":")}
+
+    try:
+        metadata = get_metadata(file)
+        real_pairings = {
+            int(track["properties"]["number"]): TrackType[track["type"]]
+            for track in metadata["tracks"]
+        }
+    except KeyError:
+        log.info(f"ERROR: {file} failed to be read.")
+        return False
+
+    # check if user_pairings is a subset of real_pairings
+    if strict:
+        matches = (
+            len(user_pairings) == len(real_pairings)
+            and user_pairings.items() == real_pairings.items()
+        )
+    else:
+        matches = user_pairings.items() <= real_pairings.items()
+
+    return matches

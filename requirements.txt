@@ -1,1 +1,3 @@
 pycountry
+langdetect
+click >= 8.0.0
